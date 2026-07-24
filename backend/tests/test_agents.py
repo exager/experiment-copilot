@@ -55,6 +55,10 @@ def test_experiment_design_agent_node(fake_llm):
 def test_validation_agent_node(fake_llm):
     state = {
         **CONTEXT_STATE,
+        "hypothesis": {
+            "primary_metric": "Checkout Conversion",
+            "guardrail_metrics": ["Payment Failure Rate"],
+        },
         "configuration": {
             "feature_flag": "checkout_v2",
             "audience": "Returning customers",
@@ -161,9 +165,14 @@ def test_evaluate_rules_approves_sane_configuration():
             "traffic_split": {"control": 0.5, "variant": 0.5},
             "audience": "x",
             "duration_days": 10,
-            "sample_size": 100,
-            "feature_flag": "y",
-        }
+            "sample_size": 5000,
+            "feature_flag": "checkout_v2",
+            "confidence_level": 0.95,
+        },
+        hypothesis={
+            "primary_metric": "Checkout Conversion",
+            "guardrail_metrics": ["Payment Failure Rate"],
+        },
     )
     assert result.decision == "approve"
     assert not result.rules_rejected
