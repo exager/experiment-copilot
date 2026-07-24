@@ -1,21 +1,20 @@
 """Process-wide configuration bootstrap.
 
-Importing this module loads ``backend/.env`` into ``os.environ`` (once) so that
-env-driven settings — the ``GEMINI_API_KEY`` used by ``app/agents/llm.py`` and
-the ``LANGCHAIN_*`` variables LangChain reads for automatic LangSmith tracing —
-are available no matter which entrypoint boots the app.
+Two responsibilities live here:
+
+1. Importing this module loads ``backend/.env`` into ``os.environ`` (once) so
+   that env-driven settings — the ``GEMINI_API_KEY`` used by
+   ``app/agents/llm.py`` and the ``LANGCHAIN_*`` variables LangChain reads for
+   automatic LangSmith tracing — are available no matter which entrypoint boots
+   the app. The load is idempotent and completely safe when ``.env`` is missing
+   or ``python-dotenv`` is unavailable (e.g. during tests), so it never raises.
+
+2. A pydantic-settings ``Settings`` object (via the cached ``get_settings()``)
+   exposes typed application configuration for the rest of the backend.
 
 Import this as early as possible on any code path that needs env vars. The LLM
 factory (``app/agents/llm.py``) imports it at module load so every graph run has
 a populated environment.
-
-The load is idempotent and completely safe when ``.env`` is missing or
-``python-dotenv`` is unavailable (e.g. during tests), so it never raises.
-"""Application configuration loaded from environment variables.
-
-Uses pydantic-settings so values can come from `.env` or the process
-environment. A single cached `get_settings()` function is exposed so the
-Settings object is constructed once per process.
 """
 
 from __future__ import annotations
@@ -55,6 +54,8 @@ def load_env() -> bool:
 
 # Load on import so a plain ``import app.config`` is enough to bootstrap env.
 load_env()
+
+
 from functools import lru_cache
 
 from pydantic import Field
