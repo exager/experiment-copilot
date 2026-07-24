@@ -1,0 +1,391 @@
+"""End-to-end HTTP tests for the API layer.
+
+Uses a `TestClient` bound to `app.main.app`, with:
+- In-memory SQLite DB via `configure_database`.
+- A `FakeScheduler` injected in place of `get_scheduler`.
+"""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import sessionmaker
+
+import tempfile
+from pathlib import Path
+
+from app.catalog.status import ExperimentStatus
+from app.database import Base, configure_database, get_db
+from app.main import app
+from app.models.metrics import Metrics
+from app.simulation import scheduler as scheduler_module
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+class FakeScheduler:
+    def __init__(self) -> None:
+        self.registered: set[int] = set()
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def shutdown(self, wait: bool = False) -> None:
+        self.started = False
+
+    def register(self, experiment_id: int, interval_seconds: int | None = None) -> str:
+        self.registered.add(experiment_id)
+        return f"fake:{experiment_id}"
+
+    def deregister(self, experiment_id: int) -> None:
+        self.registered.discard(experiment_id)
+
+    def is_registered(self, experiment_id: int) -> bool:
+        return experiment_id in self.registered
+
+
+@pytest.fixture
+def fake_scheduler(monkeypatch) -> FakeScheduler:
+    fake = FakeScheduler()
+    monkeypatch.setattr(scheduler_module, "_default_scheduler", fake)
+    monkeypatch.setattr(scheduler_module, "get_scheduler", lambda: fake)
+    return fake
+
+
+@pytest.fixture
+def client(fake_scheduler, tmp_path):
+    # A per-test SQLite file so all connections in the pool see the same tables.
+    # `:memory:` doesn't work across connections; a temp file does.
+    db_path = tmp_path / "test.db"
+    engine = configure_database(f"sqlite:///{db_path}")
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
+
+    def override_get_db():
+        session = Session()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+    Base.metadata.drop_all(bind=engine)
+
+
+# ---------------------------------------------------------------------------
+# Payload builders
+# ---------------------------------------------------------------------------
+
+
+def _valid_context_payload() -> dict:
+    return {
+        "business_goal": "Increase checkout conversion by 10%",
+        "website": "https://demo-store.com",
+        "current_flow": "Home → Product → Cart → Checkout → Payment",
+        "feature": "checkout",
+        "pain_point": "Users abandon the payment page after entering address.",
+    }
+
+
+def _valid_hypothesis_payload() -> dict:
+    return {
+        "experiment_name": "Simplified Checkout Payment",
+        "hypothesis": "Reducing checkout friction increases conversion.",
+        "primary_metric": "checkout_conversion",
+        "secondary_metrics": ["revenue_per_user"],
+        "guardrail_metrics": ["bounce_rate", "cart_abandonment_rate"],
+    }
+
+
+def _valid_configuration_payload() -> dict:
+    return {
+        "feature_flag": "checkout_v2",
+        "audience": "returning_android_users",
+        "traffic_split_option": "50_50",
+        "duration_days": 14,
+        "sample_size": 10_000,
+        "confidence_level": 0.95,
+        "baseline_conversion_rate": 0.041,
+        "expected_lift": 0.20,
+    }
+
+
+def _create_context(client: TestClient) -> int:
+    r = client.post("/context", json=_valid_context_payload())
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def _create_experiment(client: TestClient, context_id: int) -> int:
+    r = client.post(
+        "/experiments",
+        json={
+            "context_id": context_id,
+            "hypothesis": _valid_hypothesis_payload(),
+            "configuration": _valid_configuration_payload(),
+        },
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+# ---------------------------------------------------------------------------
+# /health + /catalog
+# ---------------------------------------------------------------------------
+
+
+def test_health(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+def test_catalog(client):
+    r = client.get("/catalog")
+    assert r.status_code == 200
+    payload = r.json()
+    assert "features" in payload
+    assert "audiences" in payload
+    assert "metrics" in payload
+    assert "traffic_splits" in payload
+    assert len(payload["metrics"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# /context
+# ---------------------------------------------------------------------------
+
+
+class TestPostContext:
+    def test_happy_path(self, client):
+        r = client.post("/context", json=_valid_context_payload())
+        assert r.status_code == 201
+        body = r.json()
+        assert body["id"] > 0
+        assert body["business_goal"] == "Increase checkout conversion by 10%"
+        assert body["feature"] == "checkout"
+
+    def test_rejects_unknown_feature(self, client):
+        payload = _valid_context_payload()
+        payload["feature"] = "mars_landing"
+        r = client.post("/context", json=payload)
+        assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# /experiments  (create + get + launch + stop)
+# ---------------------------------------------------------------------------
+
+
+class TestExperimentRoutes:
+    def test_create_and_get(self, client):
+        ctx_id = _create_context(client)
+        exp_id = _create_experiment(client, ctx_id)
+
+        r = client.get(f"/experiments/{exp_id}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["id"] == exp_id
+        assert body["status"] == "draft"
+        assert body["hypothesis"]["primary_metric"] == "checkout_conversion"
+
+    def test_get_missing_returns_404(self, client):
+        r = client.get("/experiments/9999")
+        assert r.status_code == 404
+
+    def test_create_rejects_bad_metric(self, client):
+        ctx_id = _create_context(client)
+        bad_hypothesis = _valid_hypothesis_payload()
+        bad_hypothesis["primary_metric"] = "bounce_rate"   # guardrail-only, not primary
+        r = client.post(
+            "/experiments",
+            json={
+                "context_id": ctx_id,
+                "hypothesis": bad_hypothesis,
+                "configuration": _valid_configuration_payload(),
+            },
+        )
+        assert r.status_code == 422
+
+    def test_launch_requires_validation(self, client):
+        ctx_id = _create_context(client)
+        exp_id = _create_experiment(client, ctx_id)
+        r = client.post(f"/experiments/{exp_id}/launch")
+        # Draft can't launch — conflict.
+        assert r.status_code == 409
+
+    def test_full_launch_flow(self, client, fake_scheduler):
+        ctx_id = _create_context(client)
+        exp_id = _create_experiment(client, ctx_id)
+
+        # Validate first.
+        r = client.post(f"/experiments/{exp_id}/validate")
+        assert r.status_code == 200
+        assert r.json()["decision"] == "approve"
+
+        # Launch.
+        r = client.post(f"/experiments/{exp_id}/launch")
+        assert r.status_code == 200
+        assert r.json()["status"] == "running"
+        assert exp_id in fake_scheduler.registered
+
+        # Stop.
+        r = client.post(f"/experiments/{exp_id}/stop")
+        assert r.status_code == 200
+        assert r.json()["status"] == "stopped"
+        assert exp_id not in fake_scheduler.registered
+
+
+# ---------------------------------------------------------------------------
+# /experiments/{id}/validate
+# ---------------------------------------------------------------------------
+
+
+class TestValidate:
+    def test_happy_path_approves(self, client):
+        ctx_id = _create_context(client)
+        exp_id = _create_experiment(client, ctx_id)
+        r = client.post(f"/experiments/{exp_id}/validate")
+        assert r.status_code == 200
+        result = r.json()
+        assert result["decision"] == "approve"
+        # Experiment moved to VALIDATED.
+        r2 = client.get(f"/experiments/{exp_id}")
+        assert r2.json()["status"] == "validated"
+
+
+# ---------------------------------------------------------------------------
+# /experiments/{id}/metrics + /report
+# ---------------------------------------------------------------------------
+
+
+def _seed_winning_metrics_row(session_factory, experiment_id: int) -> None:
+    session = session_factory()
+    try:
+        row = Metrics(
+            experiment_id=experiment_id,
+            users_control=12_000,
+            users_variant=12_000,
+            conversion_control=492,
+            conversion_variant=564,
+            revenue_control=5000.0,
+            revenue_variant=6200.0,
+        )
+        session.add(row)
+        session.commit()
+    finally:
+        session.close()
+
+
+class TestMetricsAndReport:
+    def _launch(self, client) -> int:
+        ctx_id = _create_context(client)
+        exp_id = _create_experiment(client, ctx_id)
+        client.post(f"/experiments/{exp_id}/validate")
+        client.post(f"/experiments/{exp_id}/launch")
+        return exp_id
+
+    def test_metrics_snapshot_before_ticks(self, client):
+        exp_id = self._launch(client)
+        r = client.get(f"/experiments/{exp_id}/metrics")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["experiment_id"] == exp_id
+        assert body["latest"] is None
+        assert body["series"] == []
+        assert body["statistics"]["winner"] == "inconclusive"
+
+    def test_metrics_snapshot_variant_winning(self, client):
+        # Seed a winning row directly via the overridden session factory.
+        exp_id = self._launch(client)
+
+        # The dependency override binds get_db to our test Session.
+        # We need to reach into it to insert a row using the same engine.
+        # Easiest: run one_tick via the DB session used by the override.
+        # Simpler: fetch a fresh session from the same override.
+        override = app.dependency_overrides[get_db]
+        # override is a generator function — instantiate it and grab the yielded session
+        gen = override()
+        session = next(gen)
+        try:
+            session.add(
+                Metrics(
+                    experiment_id=exp_id,
+                    users_control=12_000,
+                    users_variant=12_000,
+                    conversion_control=492,
+                    conversion_variant=564,
+                    revenue_control=5000.0,
+                    revenue_variant=6200.0,
+                )
+            )
+            session.commit()
+        finally:
+            gen.close()
+
+        r = client.get(f"/experiments/{exp_id}/metrics")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["latest"] is not None
+        assert body["statistics"]["winner"] == "variant"
+        assert body["statistics"]["is_significant"] is True
+        assert body["recommendation"]["recommendation"] == "scale"
+
+    def test_generate_report(self, client):
+        exp_id = self._launch(client)
+        # Seed a winning row so the report can pick "scale".
+        override = app.dependency_overrides[get_db]
+        gen = override()
+        session = next(gen)
+        try:
+            session.add(
+                Metrics(
+                    experiment_id=exp_id,
+                    users_control=12_000,
+                    users_variant=12_000,
+                    conversion_control=492,
+                    conversion_variant=564,
+                )
+            )
+            session.commit()
+        finally:
+            gen.close()
+
+        r = client.post(f"/experiments/{exp_id}/report")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["experiment_id"] == exp_id
+        assert body["recommendation"] == "scale"
+        assert body["summary"]
+        assert isinstance(body["next_steps"], list) and len(body["next_steps"]) >= 1
+
+        # Report call should have flipped the experiment to COMPLETED.
+        r2 = client.get(f"/experiments/{exp_id}")
+        assert r2.json()["status"] == "completed"
+
+    def test_report_accepts_overrides(self, client):
+        exp_id = self._launch(client)
+        r = client.post(
+            f"/experiments/{exp_id}/report",
+            json={
+                "summary": "Custom summary from LLM.",
+                "recommendation": "continue",
+                "next_steps": ["Extend the experiment by 2 weeks."],
+                "business_impact": "Modest projected uplift.",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["summary"] == "Custom summary from LLM."
+        assert body["recommendation"] == "continue"
+        assert body["next_steps"] == ["Extend the experiment by 2 weeks."]
+        assert body["business_impact"] == "Modest projected uplift."
