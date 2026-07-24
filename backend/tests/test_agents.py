@@ -32,7 +32,7 @@ def test_context_agent_node(fake_llm):
 
 def test_hypothesis_agent_node(fake_llm):
     result = hypothesis_agent.node(CONTEXT_STATE)
-    assert result["hypothesis"]["primary_metric"] == "Checkout Conversion"
+    assert result["hypothesis"]["primary_metric"] == "checkout_conversion"
     assert result["hypothesis"]["guardrail_metrics"]
 
 
@@ -55,9 +55,13 @@ def test_experiment_design_agent_node(fake_llm):
 def test_validation_agent_node(fake_llm):
     state = {
         **CONTEXT_STATE,
+        "hypothesis": {
+            "primary_metric": "checkout_conversion",
+            "guardrail_metrics": ["bounce_rate"],
+        },
         "configuration": {
             "feature_flag": "checkout_v2",
-            "audience": "Returning customers",
+            "audience": "returning_users",
             "traffic_split": {"control": 0.5, "variant": 0.5},
             "duration_days": 14,
             "sample_size": 5000,
@@ -117,18 +121,28 @@ def test_node_catches_llm_failure_into_errors(failing_llm):
 
 
 def test_decide_recommendation_scale():
-    stats = {"confidence": 0.96, "conversion_lift": 0.14, "is_significant": True}
+    stats = {"winner": "variant", "confidence": 0.96, "conversion_lift": 0.14}
     assert decide_recommendation(stats) == "scale"
 
 
-def test_decide_recommendation_stop_on_negative_lift():
-    stats = {"confidence": 0.99, "conversion_lift": -0.05, "is_significant": True}
+def test_decide_recommendation_stop_when_control_wins():
+    stats = {"winner": "control", "confidence": 0.97, "conversion_lift": -0.05}
     assert decide_recommendation(stats) == "stop"
 
 
 def test_decide_recommendation_continue_when_not_significant():
-    stats = {"confidence": 0.80, "conversion_lift": 0.10, "is_significant": False}
+    stats = {"winner": "inconclusive", "confidence": 0.80, "conversion_lift": 0.03}
     assert decide_recommendation(stats) == "continue"
+
+
+def test_decide_recommendation_rollback_on_guardrail_regression():
+    stats = {
+        "winner": "variant",
+        "confidence": 0.95,
+        "conversion_lift": 0.10,
+        "guardrail_regression": True,
+    }
+    assert decide_recommendation(stats) == "rollback"
 
 
 def test_estimate_business_impact_uses_revenue_when_available():
@@ -159,11 +173,13 @@ def test_evaluate_rules_approves_sane_configuration():
     result = evaluate_rules(
         {
             "traffic_split": {"control": 0.5, "variant": 0.5},
-            "audience": "x",
-            "duration_days": 10,
-            "sample_size": 100,
-            "feature_flag": "y",
-        }
+            "audience": "returning_users",
+            "duration_days": 14,
+            "sample_size": 5000,
+            "feature_flag": "checkout_v2",
+            "confidence_level": 0.95,
+        },
+        {"primary_metric": "checkout_conversion", "guardrail_metrics": ["bounce_rate"]},
     )
     assert result.decision == "approve"
     assert not result.rules_rejected

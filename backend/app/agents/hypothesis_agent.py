@@ -10,7 +10,8 @@ from pathlib import Path
 
 from app.agents import llm
 from app.agents.llm import with_retry
-from app.schemas.agent_outputs import HypothesisOutput
+from app.catalog import catalog_summary
+from app.schemas.experiment import Hypothesis
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "hypothesis.md").read_text()
 
@@ -23,7 +24,10 @@ def node(state: dict) -> dict:
         current_flow=state.get("current_flow") or "not provided",
         feature=state.get("feature") or "not provided",
         pain_point=state.get("pain_point") or "not provided",
+        catalog=catalog_summary(),
     )
-    model = llm.get_llm().with_structured_output(HypothesisOutput)
-    result: HypothesisOutput = model.invoke(prompt)
+    # Hypothesis validates every metric against the catalog, so the LLM can
+    # only emit supported metric ids (see app/schemas/experiment.py).
+    model = llm.get_llm().with_structured_output(Hypothesis)
+    result: Hypothesis = model.invoke(prompt)
     return {"hypothesis": result.model_dump()}

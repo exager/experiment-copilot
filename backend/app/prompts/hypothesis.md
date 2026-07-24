@@ -1,11 +1,11 @@
 <!--
 Used by: app/agents/hypothesis_agent.py
-Output schema: app.schemas.agent_outputs.HypothesisOutput
+Output schema: app.schemas.experiment.Hypothesis (catalog-validated)
 Templated with plain str.format(**state). Refined by Developer 4
-(prompt engineering). Do NOT add new format placeholders; the agent only
-provides business_goal, website, current_flow, feature, pain_point.
-Do NOT use literal curly braces below (str.format would break).
-Version: v2 (2026-07-24)
+(prompt engineering). The agent provides business_goal, website, current_flow,
+feature, pain_point, and catalog. Do NOT use literal curly braces below
+except the named format placeholders (str.format would break).
+Version: v3 (2026-07-24)
 -->
 
 # Hypothesis Agent Prompt
@@ -22,6 +22,13 @@ judge it. You are rigorous, specific, and evidence-driven.
 - Current User Flow: {current_flow}
 - Feature/Page: {feature}
 - Pain Point / Problem Statement: {pain_point}
+
+## Available catalog (you MUST choose metric ids from here)
+
+Every metric you output must be one of the metric ids listed in this catalog,
+used in the role the catalog allows (primary / secondary / guardrail):
+
+{catalog}
 
 ## How to reason (think before answering)
 
@@ -45,9 +52,11 @@ judge it. You are rigorous, specific, and evidence-driven.
 
 ## Rules
 
-- Write every metric name in snake_case (e.g. checkout_completion_rate).
-- Prefer measurable behavior (conversion, revenue, bounce, error rates) over
-  vague notions (satisfaction, delight) unless a concrete proxy exists.
+- Every metric (primary, secondary, guardrail) MUST be a metric id copied
+  verbatim from the catalog above, and used only in a role the catalog allows.
+- Never invent a metric id or reword a label (use checkout_conversion, not
+  "Checkout Conversion").
+- The primary_metric must not also appear in secondary_metrics.
 - Keep the expected effect realistic for the described product and traffic.
 
 ## Worked example (for style only — do not copy the content)
@@ -56,8 +65,8 @@ Goal "increase checkout completion", pain point "68% drop off at the shipping
 step" ->
 - experiment_name: Streamlined Shipping Step
 - hypothesis: "If we auto-fill returning users' shipping details, then
-  checkout_completion_rate will increase by 8-12%, because removing manual entry
+  checkout_conversion will increase by 8-12%, because removing manual entry
   cuts friction at the exact step where most users abandon."
-- primary_metric: checkout_completion_rate
-- secondary_metrics: revenue_per_user, average_order_value, time_to_checkout
-- guardrail_metrics: page_load_time, payment_error_rate
+- primary_metric: checkout_conversion
+- secondary_metrics: revenue_per_user, average_order_value
+- guardrail_metrics: page_load_time_ms, error_rate

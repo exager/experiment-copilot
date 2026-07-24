@@ -1,82 +1,54 @@
 """Validation Agent node.
 
-Runs a deterministic rule engine over the experiment configuration, then
-asks the LLM to explain the result in plain language. The LLM never
-re-decides pass/fail — it only narrates the rule engine's decision.
+Runs the configurable rule engine (:mod:`app.rules`) over the experiment
+configuration + hypothesis, then asks the LLM to explain the result in plain
+language. The LLM never re-decides pass/fail — it only narrates the rule
+engine's decision.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from app.agents import llm
 from app.agents.llm import with_retry
+from app.rules import load_validation_engine
 from app.schemas.agent_outputs import ValidationEnrichment
-from app.schemas.validation import RuleResult, ValidationResult
+from app.schemas.validation import ValidationResult
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "validation.md").read_text()
 
 
-def evaluate_rules(configuration: dict) -> ValidationResult:
-    """Deterministic rule engine.
+def _rule_context(configuration: dict, hypothesis: dict | None) -> dict[str, Any]:
+    """Shape state into the dot-path context the validation rules expect.
 
-    TODO(Dev 2 / rules owner): move this into app/rules/ once the real
-    rule engine exists there — this is a minimal stand-in so the graph has
-    something runnable today.
+    The bundled rules reference a couple of *derived* fields
+    (``configuration.traffic_split_sum`` and ``hypothesis.guardrail_count``),
+    so we compute them here rather than pushing that into the JSON rules.
     """
     traffic = configuration.get("traffic_split") or {}
     traffic_sum = (traffic.get("control") or 0) + (traffic.get("variant") or 0)
+    hyp = hypothesis or {}
+    return {
+        "configuration": {**configuration, "traffic_split_sum": traffic_sum},
+        "hypothesis": {
+            "primary_metric": hyp.get("primary_metric"),
+            "guardrail_count": len(hyp.get("guardrail_metrics") or []),
+        },
+    }
 
-    results = [
-        RuleResult(
-            rule_id="traffic_split_sums_to_one",
-            name="Traffic split sums to 1.0",
-            matched=abs(traffic_sum - 1.0) < 1e-6,
-            message=f"Traffic split sums to {traffic_sum:.2f}",
-        ),
-        RuleResult(
-            rule_id="audience_defined",
-            name="Audience is defined",
-            matched=bool(configuration.get("audience")),
-            message="Audience is set" if configuration.get("audience") else "Audience is missing",
-        ),
-        RuleResult(
-            rule_id="duration_in_range",
-            name="Duration is between 1 and 90 days",
-            matched=1 <= (configuration.get("duration_days") or 0) <= 90,
-            message=f"Duration is {configuration.get('duration_days')} days",
-        ),
-        RuleResult(
-            rule_id="sample_size_positive",
-            name="Sample size is positive",
-            matched=(configuration.get("sample_size") or 0) > 0,
-            message=f"Sample size is {configuration.get('sample_size')}",
-        ),
-        RuleResult(
-            rule_id="feature_flag_defined",
-            name="Feature flag is defined",
-            matched=bool(configuration.get("feature_flag")),
-            message="Feature flag is set" if configuration.get("feature_flag") else "Feature flag is missing",
-        ),
-    ]
 
-    matched = [r for r in results if r.matched]
-    rejected = [r for r in results if not r.matched]
-    decision = "approve" if not rejected else "reject"
-
-    return ValidationResult(
-        rules_evaluated=results,
-        rules_matched=matched,
-        rules_rejected=rejected,
-        decision=decision,
-        explanation="",
-    )
+def evaluate_rules(configuration: dict, hypothesis: dict | None = None) -> ValidationResult:
+    """Evaluate the configuration/hypothesis against the shared rule engine."""
+    return load_validation_engine().evaluate(_rule_context(configuration, hypothesis))
 
 
 @with_retry
 def node(state: dict) -> dict:
     configuration = state.get("configuration") or {}
-    rule_result = evaluate_rules(configuration)
+    hypothesis = state.get("hypothesis") or {}
+    rule_result = evaluate_rules(configuration, hypothesis)
 
     prompt = _PROMPT.format(
         configuration=configuration,

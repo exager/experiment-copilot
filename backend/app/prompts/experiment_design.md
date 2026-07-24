@@ -1,11 +1,11 @@
 <!--
 Used by: app/agents/experiment_design_agent.py
-Output schema: app.schemas.agent_outputs.ExperimentConfigurationOutput
+Output schema: app.schemas.experiment.ExperimentConfiguration (catalog-validated)
 Templated with plain str.format(**state) — placeholders are the nested
 Hypothesis fields (experiment_name, hypothesis, primary_metric,
-secondary_metrics, guardrail_metrics). Refined by Developer 4. Do NOT add
-new format placeholders and do NOT use literal curly braces below.
-Version: v2 (2026-07-24)
+secondary_metrics, guardrail_metrics) plus catalog. Refined by Developer 4.
+Do NOT use literal curly braces below except the named format placeholders.
+Version: v3 (2026-07-24)
 -->
 
 # Experiment Design Agent Prompt
@@ -22,6 +22,13 @@ configuration that another engineer could ship without follow-up questions.
 - Secondary Metrics: {secondary_metrics}
 - Guardrail Metrics: {guardrail_metrics}
 
+## Available catalog (audience and traffic split MUST come from here)
+
+Pick the `audience` from the catalog audience ids and the `traffic_split_option`
+from the catalog traffic-split options — copy the ids verbatim:
+
+{catalog}
+
 ## How to reason (think before answering)
 
 1. Estimate a realistic baseline conversion rate for the primary metric.
@@ -33,12 +40,12 @@ configuration that another engineer could ship without follow-up questions.
 
 ## Output requirements
 
-- `feature_flag`: a snake_case key, prefixed with exp_ (e.g. exp_checkout_v2).
-- `audience`: one concise sentence describing who is eligible
-  (e.g. "Returning customers reaching the checkout page on web").
-- `traffic_split`: control and variant fractions, each between 0 and 1, that sum
-  to exactly 1.0. Default to an even 0.5 / 0.5 split unless the hypothesis
-  implies otherwise.
+- `feature_flag`: a snake_case key, 3-64 chars (e.g. checkout_v2_guest).
+- `audience`: exactly one audience id from the catalog (e.g. returning_users).
+- `traffic_split_option`: one traffic-split option id from the catalog
+  (e.g. 50_50). The concrete control/variant fractions are derived from it, so
+  you do not output them yourself. Default to 50_50 unless the hypothesis
+  implies a canary rollout.
 - `duration_days`: at least 7 (to cover full weekly cycles); default 14.
 - `sample_size`: approximate users needed PER VARIANT to detect expected_lift at
   confidence_level; never below 100.
@@ -51,7 +58,7 @@ configuration that another engineer could ship without follow-up questions.
 
 ## Rules
 
-- traffic_split.control + traffic_split.variant must equal 1.0.
+- audience and traffic_split_option must be catalog ids copied verbatim.
 - Keep all numbers internally consistent: a small expected_lift and a low
   baseline_conversion_rate imply a larger sample_size and/or longer duration.
 - Keep values realistic for a typical e-commerce or SaaS product unless the

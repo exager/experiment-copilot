@@ -71,16 +71,16 @@ class Settings(BaseSettings):
         default="sqlite:///./experiment.db", alias="DATABASE_URL"
     )
 
-    # --- OpenAI ---
-    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    # --- LLM (Google Gemini — see app/agents/llm.py) ---
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
 
-    # --- LangSmith ---
-    langsmith_api_key: str | None = Field(default=None, alias="LANGSMITH_API_KEY")
-    langsmith_project: str = Field(
-        default="experiment-copilot", alias="LANGSMITH_PROJECT"
+    # --- LangSmith (LangChain reads the LANGCHAIN_* vars for auto-tracing) ---
+    langchain_api_key: str | None = Field(default=None, alias="LANGCHAIN_API_KEY")
+    langchain_project: str = Field(
+        default="experiment-copilot", alias="LANGCHAIN_PROJECT"
     )
-    langsmith_tracing: bool = Field(default=False, alias="LANGSMITH_TRACING")
+    langchain_tracing: bool = Field(default=False, alias="LANGCHAIN_TRACING_V2")
 
     # --- Simulation ---
     simulation_interval_seconds: int = Field(
@@ -96,13 +96,13 @@ class Settings(BaseSettings):
 
     @property
     def llm_enabled(self) -> bool:
-        """True when a real LLM should be used; False falls back to MockLLM."""
-        return bool(self.openai_api_key)
+        """True when a real Gemini key is configured (else agents use a fake LLM)."""
+        return bool(self.gemini_api_key)
 
     @property
     def langsmith_enabled(self) -> bool:
-        """True when LangSmith tracing should be activated."""
-        return bool(self.langsmith_api_key)
+        """True when a LangSmith/LangChain API key is configured for tracing."""
+        return bool(self.langchain_api_key)
 
 
 @lru_cache(maxsize=1)

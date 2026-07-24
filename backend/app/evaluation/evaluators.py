@@ -26,18 +26,15 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Optional
 
-from . import _compat  # noqa: F401  (install app.models.experiment shim first)
-
 from pydantic import BaseModel, ValidationError
 
 from app.schemas.agent_outputs import (
     ContextUnderstanding,
-    ExperimentConfigurationOutput,
-    HypothesisOutput,
     RationaleOutput,
     ReportNarrative,
     ValidationEnrichment,
 )
+from app.schemas.experiment import ExperimentConfiguration, Hypothesis
 
 VALID_RECOMMENDATIONS = {"scale", "continue", "stop", "rollback"}
 
@@ -60,8 +57,8 @@ class EvalScore:
 # fields, so only part of the dict maps to an agent_outputs schema).
 _SCHEMA_FOR_AGENT: dict[str, tuple[type[BaseModel], Optional[list[str]]]] = {
     "context": (ContextUnderstanding, None),
-    "hypothesis": (HypothesisOutput, None),
-    "experiment_design": (ExperimentConfigurationOutput, None),
+    "hypothesis": (Hypothesis, None),
+    "experiment_design": (ExperimentConfiguration, None),
     "validation": (
         ValidationEnrichment,
         ["validation_score", "warnings", "suggestions", "explanation"],

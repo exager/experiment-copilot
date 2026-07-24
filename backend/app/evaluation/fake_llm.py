@@ -20,17 +20,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import _compat  # noqa: F401  (install app.models.experiment shim first)
-
+from app.catalog import Audience, TrafficSplitOption
 from app.schemas.agent_outputs import (
     ContextUnderstanding,
-    ExperimentConfigurationOutput,
-    HypothesisOutput,
     RationaleOutput,
     ReportNarrative,
-    TrafficSplit,
     ValidationEnrichment,
 )
+from app.schemas.experiment import ExperimentConfiguration, Hypothesis
 
 # Scenario keys.
 _CHECKOUT = "checkout"
@@ -49,24 +46,24 @@ _RESPONSES: dict[str, dict[type, Any]] = {
             target_users="Returning Customers",
             ai_confidence=94,
         ),
-        HypothesisOutput: HypothesisOutput(
+        Hypothesis: Hypothesis(
             experiment_name="Checkout Simplification",
             hypothesis=(
                 "Reducing checkout friction with one-click guest checkout will "
                 "increase checkout conversion by lowering payment-step drop-off"
             ),
-            primary_metric="Checkout Conversion",
-            secondary_metrics=["Bounce Rate", "Average Order Value"],
-            guardrail_metrics=["Payment Failure Rate"],
+            primary_metric="checkout_conversion",
+            secondary_metrics=["average_order_value", "revenue_per_user"],
+            guardrail_metrics=["bounce_rate", "cart_abandonment_rate"],
         ),
-        ExperimentConfigurationOutput: ExperimentConfigurationOutput(
+        ExperimentConfiguration: ExperimentConfiguration(
             feature_flag="checkout_v2_guest",
-            audience="Returning customers",
-            traffic_split=TrafficSplit(control=0.5, variant=0.5),
+            audience=Audience.RETURNING_USERS,
+            traffic_split_option=TrafficSplitOption.SPLIT_50_50,
             duration_days=14,
             sample_size=12000,
             confidence_level=0.95,
-            baseline_conversion_rate=0.32,
+            baseline_conversion_rate=0.041,
             expected_lift=0.1,
         ),
         ValidationEnrichment: ValidationEnrichment(
@@ -101,24 +98,24 @@ _RESPONSES: dict[str, dict[type, Any]] = {
             target_users="New Trial Signups",
             ai_confidence=88,
         ),
-        HypothesisOutput: HypothesisOutput(
+        Hypothesis: Hypothesis(
             experiment_name="Frictionless Trial Signup",
             hypothesis=(
                 "Removing the credit-card requirement at signup will increase "
                 "trial-to-paid conversion by lowering the barrier to starting a trial"
             ),
-            primary_metric="Trial-to-Paid Conversion",
-            secondary_metrics=["Trial Signups", "Activation Rate"],
-            guardrail_metrics=["Refund Rate"],
+            primary_metric="signup_completion_rate",
+            secondary_metrics=["revenue_per_user"],
+            guardrail_metrics=["error_rate"],
         ),
-        ExperimentConfigurationOutput: ExperimentConfigurationOutput(
+        ExperimentConfiguration: ExperimentConfiguration(
             feature_flag="trial_no_cc",
-            audience="New trial signups",
-            traffic_split=TrafficSplit(control=0.5, variant=0.5),
+            audience=Audience.NEW_USERS,
+            traffic_split_option=TrafficSplitOption.SPLIT_50_50,
             duration_days=21,
             sample_size=8000,
             confidence_level=0.95,
-            baseline_conversion_rate=0.18,
+            baseline_conversion_rate=0.22,
             expected_lift=0.08,
         ),
         ValidationEnrichment: ValidationEnrichment(
