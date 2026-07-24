@@ -112,3 +112,21 @@ def fake_llm(monkeypatch):
 def failing_llm(monkeypatch):
     """Patches app.agents.llm.get_llm so every call raises, for retry/error tests."""
     monkeypatch.setattr("app.agents.llm.get_llm", lambda *a, **kw: RaisingLLM())
+
+
+@pytest.fixture(autouse=True)
+def _reset_graph_singleton():
+    """Force a fresh compiled graph + checkpointer for every test.
+
+    `app.graph.builder._graph` is a process-wide singleton with an in-memory
+    (`MemorySaver`) checkpointer keyed by thread_id. Each test's DB is fresh
+    (autoincrement ids restart at 1), but without this reset a prior test's
+    checkpoint for thread_id "1" would leak into a later, unrelated test that
+    reuses experiment id 1 — silently resuming a stale graph run (and, worse,
+    making real LLM calls in tests that never requested `fake_llm`).
+    """
+    import app.graph.builder as builder_module
+
+    builder_module._graph = None
+    yield
+    builder_module._graph = None

@@ -1,9 +1,10 @@
-"""Integration tests for the compiled graph: human-in-the-loop pause.
+"""Integration tests for the compiled graph: human-in-the-loop pauses.
 
 The graph runs `context_agent -> hypothesis_agent` and then pauses at the
-interrupt before `validation_agent`, so the user can review the proposed
-hypothesis + success metrics before launching. Everything after the interrupt
-(validation onward) is deferred to a future launch/resume phase.
+first interrupt, before `experiment_design_agent`, so the user can review the
+proposed hypothesis + success metrics. A second interrupt (before
+`simulation_node`) pauses again after `validation_agent`, before anything
+downstream of validation runs.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ def test_graph_pauses_after_hypothesis(fake_llm):
 
     # The key check: a bug that silently removes the interrupt would keep
     # running past hypothesis — assert it's paused right after hypothesis.
-    assert snapshot.next == ("validation_agent",)
+    assert snapshot.next == ("experiment_design_agent",)
     assert result.get("context_understanding") is not None
     assert result.get("hypothesis") is not None
     # Nothing downstream of the interrupt should have run yet.
@@ -48,5 +49,5 @@ def test_two_threads_do_not_leak_state(fake_llm):
     graph.invoke(INITIAL_STATE, config_b)
 
     # Both threads independently pause at the same interrupt point.
-    assert graph.get_state(config_a).next == ("validation_agent",)
-    assert graph.get_state(config_b).next == ("validation_agent",)
+    assert graph.get_state(config_a).next == ("experiment_design_agent",)
+    assert graph.get_state(config_b).next == ("experiment_design_agent",)

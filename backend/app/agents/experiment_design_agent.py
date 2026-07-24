@@ -9,9 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.agents import llm
+from app.agents.db import maybe_session
 from app.agents.llm import with_retry
 from app.catalog import catalog_summary
 from app.schemas.experiment import ExperimentConfiguration
+from app.services import experiment_service
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "experiment_design.md").read_text()
 
@@ -31,4 +33,10 @@ def node(state: dict) -> dict:
     # and derives the concrete traffic_split from the chosen option.
     model = llm.get_llm().with_structured_output(ExperimentConfiguration)
     result: ExperimentConfiguration = model.invoke(prompt)
-    return {"configuration": result.model_dump(mode="json")}
+    configuration = result.model_dump(mode="json")
+
+    with maybe_session(state) as session:
+        if session is not None:
+            experiment_service.update_configuration(session, state["experiment_id"], configuration)
+
+    return {"configuration": configuration}

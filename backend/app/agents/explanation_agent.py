@@ -1,47 +1,37 @@
 """Explanation Agent node.
 
-Decides the recommendation category with the configurable recommendation rule
-engine (:mod:`app.rules`), then asks the LLM to narrate a single rationale
-paragraph around that decision. The LLM never picks the category itself.
+Decides the recommendation category with the shared `recommendation_service`
+(the same rule engine `GET /experiments/{id}/metrics` uses), then asks the
+LLM to narrate a single rationale paragraph around that decision. The LLM
+never picks the category itself.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
 
 from app.agents import llm
 from app.agents.llm import with_retry
-from app.rules import load_recommendation_engine
 from app.schemas.agent_outputs import RationaleOutput
-from app.schemas.metrics import Recommendation, RecommendationOut
+from app.schemas.metrics import Recommendation, RecommendationOut, StatisticsOut
+from app.services import recommendation_service
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "explanation.md").read_text()
 
 
-def _rule_context(statistics: dict) -> dict[str, Any]:
-    """Shape statistics into the dot-path context the recommendation rules use.
-
-    ``guardrail.regression`` and ``progress.sample_ratio`` are supplied by the
-    statistics layer once it tracks them; until then they default to safe
-    values (no regression, run not exhausted) so the engine falls through to
-    scale/stop/continue based on winner + confidence + lift.
-    """
-    return {
-        "statistics": {
-            "winner": statistics.get("winner"),
-            "confidence": statistics.get("confidence") or 0.0,
-            "conversion_lift": statistics.get("conversion_lift") or 0.0,
-        },
-        "guardrail": {"regression": bool(statistics.get("guardrail_regression", False))},
-        "progress": {"sample_ratio": statistics.get("sample_ratio") or 0.0},
-    }
-
-
 def decide_recommendation(statistics: dict) -> Recommendation:
-    """Return the recommendation category from the shared rule engine."""
-    result = load_recommendation_engine().evaluate(_rule_context(statistics))
-    return cast(Recommendation, result.decision)
+    """Return the recommendation category from the shared rule engine.
+
+    ``guardrail_regression`` / ``sample_ratio`` are extra keys `statistics`
+    may carry (populated by `pending_nodes.statistics_node`); `StatisticsOut`
+    ignores unknown fields, so passing the raw dict straight through is safe.
+    """
+    result = recommendation_service.recommend(
+        StatisticsOut(**statistics),
+        guardrail_regressed=bool(statistics.get("guardrail_regression", False)),
+        sample_ratio=float(statistics.get("sample_ratio") or 0.0),
+    )
+    return result.recommendation
 
 
 @with_retry

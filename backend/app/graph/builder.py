@@ -1,14 +1,15 @@
-"""LangGraph assembly: nodes, edges, human-in-the-loop interrupt, checkpointer.
+"""LangGraph assembly: nodes, edges, human-in-the-loop interrupts, checkpointer.
 
 Pipeline:
-    context_agent -> hypothesis_agent -> [INTERRUPT: wait for user launch]
-    -> validation_agent -> simulation_node -> statistics_node
-    -> explanation_agent -> report_agent -> END
+    context_agent -> hypothesis_agent -> [INTERRUPT: wait for metric review]
+    -> experiment_design_agent -> validation_agent -> [INTERRUPT: wait for launch]
+    -> simulation_node -> statistics_node -> explanation_agent -> report_agent -> END
 
-The graph pauses right after `hypothesis_agent` so the user can review the
-proposed hypothesis and success metrics. Everything after the interrupt
-(validation onward) is wired for a future "launch"/resume phase and does not
-run in the current hypothesis-review flow.
+Two human-in-the-loop pauses:
+  1. Right after `hypothesis_agent` — the user reviews/edits the proposed
+     success metrics before experiment design + validation run.
+  2. Right after `validation_agent` — the user reviews the validated
+     configuration before simulation actually runs.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agents import (
     context_agent,
+    experiment_design_agent,
     explanation_agent,
     hypothesis_agent,
     report_agent,
@@ -38,6 +40,7 @@ def build_graph():
 
     graph.add_node("context_agent", context_agent.node)
     graph.add_node("hypothesis_agent", hypothesis_agent.node)
+    graph.add_node("experiment_design_agent", experiment_design_agent.node)
     graph.add_node("validation_agent", validation_agent.node)
     graph.add_node("simulation_node", simulation_node)
     graph.add_node("statistics_node", statistics_node)
@@ -46,8 +49,8 @@ def build_graph():
 
     graph.add_edge(START, "context_agent")
     graph.add_edge("context_agent", "hypothesis_agent")
-    # `experiment_design_agent` removed: pause after hypothesis for user review.
-    graph.add_edge("hypothesis_agent", "validation_agent")
+    graph.add_edge("hypothesis_agent", "experiment_design_agent")
+    graph.add_edge("experiment_design_agent", "validation_agent")
     graph.add_edge("validation_agent", "simulation_node")
     graph.add_edge("simulation_node", "statistics_node")
     graph.add_edge("statistics_node", "explanation_agent")
@@ -55,9 +58,10 @@ def build_graph():
     graph.add_edge("report_agent", END)
 
     checkpointer = MemorySaver()
-    # Pause right after `hypothesis_agent` so the user can review the proposed
-    # hypothesis + success metrics before anything downstream runs.
-    return graph.compile(checkpointer=checkpointer, interrupt_before=["validation_agent"])
+    return graph.compile(
+        checkpointer=checkpointer,
+        interrupt_before=["experiment_design_agent", "simulation_node"],
+    )
 
 
 _graph = None
@@ -72,7 +76,7 @@ def get_graph():
 
 
 def start_experiment(thread_id: str, initial_state: dict) -> dict:
-    """Run the graph up to the human-in-the-loop pause before simulation."""
+    """Run the graph up to the first pause, right after `hypothesis_agent`."""
     config = {
         "configurable": {"thread_id": thread_id},
         **get_run_config("experiment_pipeline.start", thread_id),
@@ -81,9 +85,26 @@ def start_experiment(thread_id: str, initial_state: dict) -> dict:
 
 
 def resume_experiment(thread_id: str) -> dict:
-    """Resume a paused graph after the user launches the experiment."""
+    """Resume a paused graph from whichever interrupt it's currently sitting at."""
     config = {
         "configurable": {"thread_id": thread_id},
         **get_run_config("experiment_pipeline.resume", thread_id),
     }
     return get_graph().invoke(None, config)
+
+
+def update_experiment_state(thread_id: str, values: dict) -> None:
+    """Patch a paused thread's checkpointed state (e.g. an edited hypothesis)
+    before resuming it — lets the API layer apply user edits without
+    re-running any already-completed node."""
+    config = {"configurable": {"thread_id": thread_id}}
+    get_graph().update_state(config, values)
+
+
+def get_experiment_snapshot(thread_id: str):
+    """Inspect a thread's current checkpoint. `.next` is empty/falsy when the
+    thread was never started or has already run to completion — callers use
+    this to distinguish a graph-driven experiment (paused, resumable) from
+    one created through the manual (non-graph) API path."""
+    config = {"configurable": {"thread_id": thread_id}}
+    return get_graph().get_state(config)

@@ -1,0 +1,377 @@
+{
+  "info": {
+    "_postman_id": "b7a6f9d2-4e1a-4c8b-9f3a-1d2e3f4a5b6c",
+    "name": "Experiment Copilot API",
+    "description": "Live API reference for the frontend team. Every request/response body below was captured from a real run against the actual server (`uvicorn app.main:app`) — including two real Gemini-generated hypotheses, a real simulated metrics series, and a real executive report — not hand-typed.\n\nTwo parallel paths exist:\n\n1. **AI-driven (LangGraph) path** — `POST /context` -> `POST /context/{context_id}/hypothesis` (runs context_agent + hypothesis_agent, pauses) -> `POST /experiments/{id}/validate` **with** a metric-selection body (resumes experiment_design_agent + validation_agent, pauses again) -> `POST /experiments/{id}/launch` (resumes simulation -> statistics -> explanation -> report_agent, all the way to a persisted report).\n2. **Manual path** — `POST /experiments` with a caller-supplied hypothesis + configuration (no AI, no graph) -> `POST /experiments/{id}/validate` **without** a body (rule engine only) -> `POST /experiments/{id}/launch` (registers the live 5-second-tick scheduler, no AI narration).\n\n`POST /experiments/{id}/validate` and `POST /experiments/{id}/launch` both auto-detect which path an experiment is on (a paused LangGraph thread vs. not) and behave accordingly — same URL either way.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000", "type": "string" },
+    { "key": "contextId", "value": "2", "type": "string" },
+    { "key": "experimentId", "value": "2", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"ok\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "GET /catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog", "host": ["{{baseUrl}}"], "path": ["catalog"] },
+            "description": "Every pre-set enum the platform knows about (features, audiences, metrics, traffic splits, durations, confidence levels, sample sizes, statuses). Use this to render dropdowns/checklists instead of hard-coding ids — the ids here are exactly what `Hypothesis`/`ExperimentConfiguration` validate against."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "url": { "raw": "{{baseUrl}}/catalog", "host": ["{{baseUrl}}"], "path": ["catalog"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"features\": [\n    { \"id\": \"checkout\", \"description\": \"The checkout / payment flow.\" },\n    { \"id\": \"cart\", \"description\": \"The shopping cart page.\" },\n    { \"id\": \"product_page\", \"description\": \"Individual product detail pages.\" },\n    { \"id\": \"signup\", \"description\": \"Account signup / registration flow.\" },\n    { \"id\": \"search\", \"description\": \"Site search experience.\" },\n    { \"id\": \"homepage\", \"description\": \"The homepage / landing page.\" },\n    { \"id\": \"onboarding\", \"description\": \"First-run / new-user onboarding.\" }\n  ],\n  \"audiences\": [\n    { \"id\": \"all_users\", \"description\": \"Every user, no filtering.\" },\n    { \"id\": \"new_users\", \"description\": \"Users on their first session.\" },\n    { \"id\": \"returning_users\", \"description\": \"Users with at least one prior session.\" },\n    { \"id\": \"mobile_users\", \"description\": \"Any mobile device.\" },\n    { \"id\": \"desktop_users\", \"description\": \"Desktop browsers only.\" },\n    { \"id\": \"android_users\", \"description\": \"Users on Android devices.\" },\n    { \"id\": \"ios_users\", \"description\": \"Users on iOS devices.\" },\n    { \"id\": \"returning_android_users\", \"description\": \"Returning users on Android devices.\" },\n    { \"id\": \"high_value_customers\", \"description\": \"Top-spending customer segment.\" },\n    { \"id\": \"us_users\", \"description\": \"Users located in the United States.\" },\n    { \"id\": \"eu_users\", \"description\": \"Users located in the European Union.\" }\n  ],\n  \"metrics\": [\n    { \"id\": \"checkout_conversion\", \"label\": \"Checkout Conversion\", \"kind\": \"ratio\", \"direction\": \"higher_is_better\", \"eligible_roles\": [\"primary\"], \"baseline\": 0.041, \"unit\": \"%\", \"description\": \"Fraction of sessions that complete a checkout.\" },\n    { \"id\": \"add_to_cart_rate\", \"label\": \"Add-to-Cart Rate\", \"kind\": \"ratio\", \"direction\": \"higher_is_better\", \"eligible_roles\": [\"primary\", \"secondary\"], \"baseline\": 0.18, \"unit\": \"%\", \"description\": \"Fraction of product-page sessions that add a product to cart.\" },\n    { \"id\": \"bounce_rate\", \"label\": \"Bounce Rate\", \"kind\": \"ratio\", \"direction\": \"lower_is_better\", \"eligible_roles\": [\"guardrail\"], \"baseline\": 0.24, \"unit\": \"%\", \"description\": \"Fraction of sessions with a single page view.\" },\n    \"... 8 more metrics (see app/catalog/metrics.py): signup_completion_rate, search_click_through, revenue_per_user, average_order_value, session_duration, cart_abandonment_rate, page_load_time_ms, error_rate ...\"\n  ],\n  \"traffic_splits\": [\n    { \"option\": \"50_50\", \"label\": \"50 / 50 (standard)\", \"control\": 0.5, \"variant\": 0.5 },\n    { \"option\": \"60_40\", \"label\": \"60 / 40\", \"control\": 0.6, \"variant\": 0.4 },\n    { \"option\": \"70_30\", \"label\": \"70 / 30\", \"control\": 0.7, \"variant\": 0.3 },\n    { \"option\": \"90_10\", \"label\": \"90 / 10 (canary)\", \"control\": 0.9, \"variant\": 0.1 },\n    { \"option\": \"95_5\", \"label\": \"95 / 5 (small canary)\", \"control\": 0.95, \"variant\": 0.05 }\n  ],\n  \"duration_options_days\": [7, 14, 21, 28],\n  \"confidence_levels\": [0.9, 0.95, 0.99],\n  \"default_sample_sizes\": [2000, 5000, 10000, 25000],\n  \"statuses\": [\"draft\", \"validated\", \"running\", \"completed\", \"stopped\"]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Product Context",
+      "item": [
+        {
+          "name": "POST /context",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_goal\": \"Increase checkout conversion by 15% among returning customers\",\n  \"website\": \"https://www.shopmax.com\",\n  \"current_flow\": \"cart -> checkout -> payment -> confirm\",\n  \"feature\": \"checkout\",\n  \"pain_point\": \"Users abandon checkout during the payment step\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/context", "host": ["{{baseUrl}}"], "path": ["context"] },
+            "description": "Persists the PM's Home-form input. Cheap, synchronous, no AI involved. `feature` must be one of the catalog Feature ids."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/context", "host": ["{{baseUrl}}"], "path": ["context"] } },
+              "status": "Created", "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 2,\n  \"business_goal\": \"Increase checkout conversion by 15% among returning customers\",\n  \"website\": \"https://www.shopmax.com\",\n  \"current_flow\": \"cart -> checkout -> payment -> confirm\",\n  \"feature\": \"checkout\",\n  \"pain_point\": \"Users abandon checkout during the payment step\",\n  \"created_at\": \"2026-07-24T17:11:45\"\n}"
+            },
+            {
+              "name": "422 Unprocessable Entity — unknown feature",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/context", "host": ["{{baseUrl}}"], "path": ["context"] } },
+              "status": "Unprocessable Entity", "code": 422,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"detail\": [\n    {\n      \"type\": \"enum\",\n      \"loc\": [\"body\", \"feature\"],\n      \"msg\": \"Input should be 'checkout', 'cart', 'product_page', 'signup', 'search', 'homepage' or 'onboarding'\",\n      \"input\": \"mars_landing\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /context/:contextId/hypothesis",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/context/{{contextId}}/hypothesis",
+              "host": ["{{baseUrl}}"],
+              "path": ["context", "{{contextId}}", "hypothesis"],
+              "variable": [{ "key": "contextId", "value": "{{contextId}}" }]
+            },
+            "description": "Empty body — the context id is in the path. Creates a placeholder Experiment, runs context_agent + hypothesis_agent (real Gemini call), and pauses the graph right after hypothesis_agent. Returns the full catalog for each metric role with the AI's picks pre-selected, so the frontend can render a checklist and let the PM adjust it before calling /validate."
+          },
+          "response": [
+            {
+              "name": "200 OK — real Gemini output",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/context/{{contextId}}/hypothesis", "host": ["{{baseUrl}}"], "path": ["context", "{{contextId}}", "hypothesis"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"thread_id\": \"2\",\n  \"experiment_id\": 2,\n  \"experiment_name\": \"One-Click Payment for Returning Users\",\n  \"hypothesis\": \"If we offer a one-click payment option for returning customers, then checkout_conversion will increase by 7-12%, because reducing friction at the payment step will directly address the abandonment pain point for this segment.\",\n  \"problem_statement\": \"Users are abandoning the checkout process specifically during the payment step.\",\n  \"context_understanding\": {\n    \"product_type\": \"E-Commerce Website\",\n    \"business_goal_summary\": \"Increase checkout conversion by 15% among returning customers.\",\n    \"problem_identified\": \"Users are abandoning the checkout process specifically during the payment step.\",\n    \"experiment_area\": \"Checkout payment step.\",\n    \"target_users\": \"Returning customers who abandon checkout during the payment step.\",\n    \"ai_confidence\": 95\n  },\n  \"primary_metric\": [\n    { \"id\": \"checkout_conversion\", \"label\": \"Checkout Conversion\", \"selected\": true },\n    { \"id\": \"add_to_cart_rate\", \"label\": \"Add-to-Cart Rate\", \"selected\": false },\n    { \"id\": \"signup_completion_rate\", \"label\": \"Signup Completion Rate\", \"selected\": false },\n    { \"id\": \"search_click_through\", \"label\": \"Search Click-Through Rate\", \"selected\": false },\n    { \"id\": \"revenue_per_user\", \"label\": \"Revenue per User\", \"selected\": false }\n  ],\n  \"secondary_metrics\": [\n    { \"id\": \"add_to_cart_rate\", \"label\": \"Add-to-Cart Rate\", \"selected\": false },\n    { \"id\": \"search_click_through\", \"label\": \"Search Click-Through Rate\", \"selected\": false },\n    { \"id\": \"revenue_per_user\", \"label\": \"Revenue per User\", \"selected\": true },\n    { \"id\": \"average_order_value\", \"label\": \"Average Order Value\", \"selected\": true },\n    { \"id\": \"session_duration\", \"label\": \"Session Duration\", \"selected\": true }\n  ],\n  \"guardrail_metrics\": [\n    { \"id\": \"bounce_rate\", \"label\": \"Bounce Rate\", \"selected\": false },\n    { \"id\": \"cart_abandonment_rate\", \"label\": \"Cart Abandonment Rate\", \"selected\": true },\n    { \"id\": \"page_load_time_ms\", \"label\": \"Page Load Time (ms)\", \"selected\": true },\n    { \"id\": \"error_rate\", \"label\": \"Error Rate\", \"selected\": true }\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found — unknown context",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/context/9999/hypothesis", "host": ["{{baseUrl}}"], "path": ["context", "9999", "hypothesis"] } },
+              "status": "Not Found", "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"not_found\",\n  \"message\": \"ProductContext 9999 not found\",\n  \"details\": { \"context_id\": 9999 }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Experiments",
+      "item": [
+        {
+          "name": "POST /experiments (manual path — caller supplies hypothesis + configuration)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"context_id\": {{contextId}},\n  \"hypothesis\": {\n    \"experiment_name\": \"Signup Simplification\",\n    \"hypothesis\": \"Fewer form fields increases signup completion.\",\n    \"primary_metric\": \"signup_completion_rate\",\n    \"secondary_metrics\": [],\n    \"guardrail_metrics\": [\"error_rate\"]\n  },\n  \"configuration\": {\n    \"feature_flag\": \"signup_v2\",\n    \"audience\": \"new_users\",\n    \"traffic_split_option\": \"60_40\",\n    \"duration_days\": 10,\n    \"sample_size\": 4000,\n    \"confidence_level\": 0.95,\n    \"baseline_conversion_rate\": 0.22,\n    \"expected_lift\": 0.1\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/experiments", "host": ["{{baseUrl}}"], "path": ["experiments"] },
+            "description": "The manual (non-AI) path: bypasses the LangGraph pipeline entirely. `hypothesis`/`configuration` go through the same catalog validation the AI's output does (invalid metric ids / audiences / traffic splits are rejected with 422)."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/experiments", "host": ["{{baseUrl}}"], "path": ["experiments"] } },
+              "status": "Created", "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 3,\n  \"context_id\": 3,\n  \"hypothesis\": {\n    \"experiment_name\": \"Signup Simplification\",\n    \"hypothesis\": \"Fewer form fields increases signup completion.\",\n    \"primary_metric\": \"signup_completion_rate\",\n    \"secondary_metrics\": [],\n    \"guardrail_metrics\": [\"error_rate\"]\n  },\n  \"configuration\": {\n    \"feature_flag\": \"signup_v2\",\n    \"audience\": \"new_users\",\n    \"traffic_split_option\": \"60_40\",\n    \"traffic_split\": { \"control\": 0.6, \"variant\": 0.4 },\n    \"duration_days\": 10,\n    \"sample_size\": 4000,\n    \"confidence_level\": 0.95,\n    \"baseline_conversion_rate\": 0.22,\n    \"expected_lift\": 0.1\n  },\n  \"validation\": null,\n  \"status\": \"draft\",\n  \"created_at\": \"2026-07-24T17:13:51\",\n  \"started_at\": null,\n  \"completed_at\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /experiments/:experimentId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/experiments/{{experimentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["experiments", "{{experimentId}}"],
+              "variable": [{ "key": "experimentId", "value": "{{experimentId}}" }]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK — validated, AI-driven path",
+              "originalRequest": { "method": "GET", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 2,\n  \"context_id\": 2,\n  \"hypothesis\": {\n    \"experiment_name\": \"One-Click Payment for Returning Users\",\n    \"hypothesis\": \"If we offer a one-click payment option for returning customers, then checkout_conversion will increase by 7-12%, because reducing friction at the payment step will directly address the abandonment pain point for this segment.\",\n    \"primary_metric\": \"checkout_conversion\",\n    \"secondary_metrics\": [\"revenue_per_user\"],\n    \"guardrail_metrics\": [\"page_load_time_ms\", \"error_rate\", \"cart_abandonment_rate\"]\n  },\n  \"configuration\": {\n    \"feature_flag\": \"one_click_payment_returning_users\",\n    \"audience\": \"returning_users\",\n    \"traffic_split_option\": \"50_50\",\n    \"traffic_split\": { \"control\": 0.5, \"variant\": 0.5 },\n    \"duration_days\": 14,\n    \"sample_size\": 77500,\n    \"confidence_level\": 0.95,\n    \"baseline_conversion_rate\": 0.041,\n    \"expected_lift\": 0.07\n  },\n  \"validation\": {\n    \"decision\": \"approve\",\n    \"validation_score\": 0.95,\n    \"warnings\": [],\n    \"suggestions\": [],\n    \"explanation\": \"This experiment configuration has been approved by the rule engine. All critical checks passed, indicating a sound setup for launch. The experiment is well-designed and ready to proceed.\",\n    \"rules_matched\": \"... 10 rules, see POST /validate below ...\",\n    \"rules_rejected\": []\n  },\n  \"status\": \"validated\",\n  \"created_at\": \"2026-07-24T17:11:52\",\n  \"started_at\": null,\n  \"completed_at\": null\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": { "method": "GET", "url": { "raw": "{{baseUrl}}/experiments/9999", "host": ["{{baseUrl}}"], "path": ["experiments", "9999"] } },
+              "status": "Not Found", "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"not_found\",\n  \"message\": \"Experiment 9999 not found\",\n  \"details\": { \"experiment_id\": 9999 }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Validation",
+      "item": [
+        {
+          "name": "POST /experiments/:experimentId/validate — AI-driven (with metric edits)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"primary_metric\": [\n    { \"id\": \"checkout_conversion\", \"selected\": true },\n    { \"id\": \"add_to_cart_rate\", \"selected\": false },\n    { \"id\": \"signup_completion_rate\", \"selected\": false },\n    { \"id\": \"search_click_through\", \"selected\": false },\n    { \"id\": \"revenue_per_user\", \"selected\": false }\n  ],\n  \"secondary_metrics\": [\n    { \"id\": \"add_to_cart_rate\", \"selected\": false },\n    { \"id\": \"search_click_through\", \"selected\": false },\n    { \"id\": \"revenue_per_user\", \"selected\": true },\n    { \"id\": \"average_order_value\", \"selected\": false },\n    { \"id\": \"session_duration\", \"selected\": false }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/experiments/{{experimentId}}/validate",
+              "host": ["{{baseUrl}}"],
+              "path": ["experiments", "{{experimentId}}", "validate"]
+            },
+            "description": "For an experiment created via POST /context/{id}/hypothesis (a paused LangGraph thread exists): the body must be `{primary_metric, secondary_metrics}`, each the FULL catalog list for that role with exactly the ids the PM wants selected. Every id in `primary_metric` must cover exactly the catalog's primary-eligible ids (same for `secondary_metrics`), and exactly one `primary_metric` entry must be `selected: true`. Applying this replaces the hypothesis's metric selection, then resumes the graph: experiment_design_agent (real Gemini call) -> validation_agent, pausing again before simulation."
+          },
+          "response": [
+            {
+              "name": "200 OK — approved",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/validate", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "validate"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"decision\": \"approve\",\n  \"validation_score\": 0.95,\n  \"warnings\": [],\n  \"suggestions\": [],\n  \"explanation\": \"This experiment configuration has been approved by the rule engine. All critical checks passed, indicating a sound setup for launch. The experiment is well-designed and ready to proceed.\",\n  \"rules_evaluated\": [\n    { \"rule_id\": \"traffic_split_sums_to_one\", \"name\": \"Traffic split must sum to 1.0\", \"priority\": 100, \"matched\": true, \"decision\": \"approve\", \"message\": \"Traffic split sums to 1.0.\", \"details\": {} },\n    { \"rule_id\": \"min_sample_size\", \"name\": \"Sample size must be at least 1000 users per arm\", \"priority\": 70, \"matched\": true, \"decision\": \"approve\", \"message\": \"Sample size is sufficient.\", \"details\": {} },\n    \"... 8 more rules, all matched (see app/rules/validation_rules.json) ...\"\n  ],\n  \"rules_matched\": \"... same 10 items as rules_evaluated ...\",\n  \"rules_rejected\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /experiments/:experimentId/validate — manual path (no body)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/experiments/{{experimentId}}/validate",
+              "host": ["{{baseUrl}}"],
+              "path": ["experiments", "{{experimentId}}", "validate"]
+            },
+            "description": "For a manually-created experiment (POST /experiments, no graph thread): call with no body — runs the rule engine only, no LLM narration (`validation_score`/`warnings`/`suggestions`/`explanation` reflect that: score is always null, explanation is the raw rule-engine text)."
+          },
+          "response": [
+            {
+              "name": "200 OK — approved (rule engine only, no LLM)",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/validate", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "validate"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"decision\": \"approve\",\n  \"validation_score\": null,\n  \"warnings\": [],\n  \"suggestions\": [],\n  \"explanation\": \"Decision: approve.\\nMatched rules:\\n - [traffic_split_sums_to_one] Traffic split must sum to 1.0 — Traffic split sums to 1.0.\\n - [min_sample_size] Sample size must be at least 1000 users per arm — Sample size is sufficient.\\n - [guardrail_metrics_present] At least one guardrail metric should be defined — Guardrail metric(s) defined.\",\n  \"rules_evaluated\": \"... 10 rules ...\",\n  \"rules_matched\": \"... 10 rules, all matched ...\",\n  \"rules_rejected\": []\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Launch & Stop",
+      "item": [
+        {
+          "name": "POST /experiments/:experimentId/launch",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/experiments/{{experimentId}}/launch",
+              "host": ["{{baseUrl}}"],
+              "path": ["experiments", "{{experimentId}}", "launch"]
+            },
+            "description": "Empty body. Auto-detects the path:\n- Paused graph thread (AI-driven): resumes simulation_node (real ticks until sample_size is reached, writing Metrics rows) -> statistics_node -> explanation_agent (real Gemini call) -> report_agent (real Gemini call, persists the report) -> END. Can take a while for a large sample_size — this is synchronous.\n- No graph thread (manual): registers the live 5-second-tick scheduler (`GET /metrics` fills in over time instead of all at once)."
+          },
+          "response": [
+            {
+              "name": "200 OK — AI-driven, run to completion",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/launch", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "launch"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 2,\n  \"context_id\": 2,\n  \"hypothesis\": { \"...\": \"unchanged from GET /experiments/2 above\" },\n  \"configuration\": { \"...\": \"unchanged from GET /experiments/2 above\" },\n  \"validation\": { \"...\": \"unchanged from GET /experiments/2 above\" },\n  \"status\": \"completed\",\n  \"created_at\": \"2026-07-24T17:11:52\",\n  \"started_at\": \"2026-07-24T17:12:39\",\n  \"completed_at\": \"2026-07-24T17:12:57\"\n}"
+            },
+            {
+              "name": "200 OK — manual path, registers live scheduler",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/launch", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "launch"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 3,\n  \"status\": \"running\",\n  \"started_at\": \"2026-07-24T17:14:04.166200\",\n  \"completed_at\": null,\n  \"...\": \"hypothesis/configuration/validation unchanged\"\n}"
+            },
+            {
+              "name": "409 Conflict — not yet validated",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/experiments/4/launch", "host": ["{{baseUrl}}"], "path": ["experiments", "4", "launch"] } },
+              "status": "Conflict", "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"conflict\",\n  \"message\": \"Cannot launch experiment in state draft; expected VALIDATED\",\n  \"details\": { \"experiment_id\": 4, \"status\": \"draft\" }\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /experiments/:experimentId/stop",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/experiments/{{experimentId}}/stop",
+              "host": ["{{baseUrl}}"],
+              "path": ["experiments", "{{experimentId}}", "stop"]
+            },
+            "description": "Manually halts a running (manual-path, live-ticking) experiment and deregisters its scheduler job."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/stop", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "stop"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 3,\n  \"status\": \"stopped\",\n  \"started_at\": \"2026-07-24T17:14:04.166200\",\n  \"completed_at\": \"2026-07-24T17:14:04.197214\",\n  \"...\": \"hypothesis/configuration/validation unchanged\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Metrics",
+      "item": [
+        {
+          "name": "GET /experiments/:experimentId/metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/experiments/{{experimentId}}/metrics",
+              "host": ["{{baseUrl}}"],
+              "path": ["experiments", "{{experimentId}}", "metrics"],
+              "variable": [{ "key": "experimentId", "value": "{{experimentId}}" }]
+            },
+            "description": "Poll every ~5 seconds while an experiment is running (manual path) or call once after an AI-driven launch completes. Real capture below: a completed AI-driven run with 77,500 simulated users, landing inconclusive (this is a genuine, not cherry-picked, outcome — recommendations vary run to run)."
+          },
+          "response": [
+            {
+              "name": "200 OK — completed run (real capture)",
+              "originalRequest": { "method": "GET", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/metrics", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "metrics"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"experiment_id\": 2,\n  \"latest\": {\n    \"id\": 387,\n    \"experiment_id\": 2,\n    \"users_control\": 38709,\n    \"users_variant\": 38877,\n    \"conversion_control\": 1646,\n    \"conversion_variant\": 1681,\n    \"revenue_control\": 68753.22,\n    \"revenue_variant\": 69941.73,\n    \"confidence\": 0.3777,\n    \"p_value\": 0.6223,\n    \"conversion_lift\": 0.0169,\n    \"timestamp\": \"2026-07-24T17:12:44\"\n  },\n  \"series\": [\n    { \"id\": 188, \"experiment_id\": 2, \"users_control\": 18924, \"users_variant\": 18961, \"conversion_control\": 797, \"conversion_variant\": 835, \"revenue_control\": 33521.92, \"revenue_variant\": 34544.06, \"confidence\": 0.6431, \"p_value\": 0.3569, \"conversion_lift\": 0.0456, \"timestamp\": \"2026-07-24T17:12:41\" },\n    \"... 199 more points, one per simulation tick, chronological ...\"\n  ],\n  \"statistics\": {\n    \"p_value\": 0.6223,\n    \"confidence\": 0.3777,\n    \"conversion_lift\": 0.0169,\n    \"z_score\": 0.4926,\n    \"control_conversion_rate\": 0.0425,\n    \"variant_conversion_rate\": 0.0432,\n    \"winner\": \"inconclusive\",\n    \"is_significant\": false\n  },\n  \"recommendation\": {\n    \"recommendation\": \"stop\",\n    \"rationale\": \"Sample size reached without reaching significance; inconclusive.\",\n    \"confidence\": 0.3777\n  }\n}"
+            },
+            {
+              "name": "200 OK — before any ticks",
+              "originalRequest": { "method": "GET", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/metrics", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "metrics"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"experiment_id\": 3,\n  \"latest\": null,\n  \"series\": [],\n  \"statistics\": {\n    \"p_value\": null,\n    \"confidence\": null,\n    \"conversion_lift\": null,\n    \"z_score\": null,\n    \"control_conversion_rate\": null,\n    \"variant_conversion_rate\": null,\n    \"winner\": \"inconclusive\",\n    \"is_significant\": false\n  },\n  \"recommendation\": {\n    \"recommendation\": \"continue\",\n    \"rationale\": \"Insufficient evidence for a terminal decision; keep the experiment running.\",\n    \"confidence\": 0.0\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Report",
+      "item": [
+        {
+          "name": "POST /experiments/:experimentId/report",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/experiments/{{experimentId}}/report",
+              "host": ["{{baseUrl}}"],
+              "path": ["experiments", "{{experimentId}}", "report"]
+            },
+            "description": "Regenerates the executive report from the CURRENT statistics/recommendation and overwrites whatever report already exists (even one report_agent wrote during an AI-driven /launch) — always the latest snapshot, deterministic summary unless an optional body with `summary`/`business_impact`/`next_steps`/`recommendation` overrides is passed."
+          },
+          "response": [
+            {
+              "name": "200 OK — real capture (inconclusive run)",
+              "originalRequest": { "method": "POST", "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/report", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "report"] } },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 1,\n  \"experiment_id\": 2,\n  \"summary\": \"Results remain inconclusive (confidence 37.8%). Consider extending the experiment or reviewing the design.\",\n  \"recommendation\": \"stop\",\n  \"business_impact\": null,\n  \"next_steps\": [\n    \"Stop the experiment; revert to the control experience.\",\n    \"Investigate why variant underperformed before iterating.\"\n  ],\n  \"details\": {\n    \"statistics\": {\n      \"p_value\": 0.6223,\n      \"confidence\": 0.3777,\n      \"conversion_lift\": 0.0169,\n      \"z_score\": 0.4926,\n      \"control_conversion_rate\": 0.0425,\n      \"variant_conversion_rate\": 0.0432,\n      \"winner\": \"inconclusive\",\n      \"is_significant\": false\n    },\n    \"sample_ratio\": 1.0,\n    \"guardrail_regressed\": false\n  },\n  \"generated_at\": \"2026-07-24T17:12:57\"\n}"
+            },
+            {
+              "name": "200 OK — with overrides",
+              "originalRequest": {
+                "method": "POST",
+                "url": { "raw": "{{baseUrl}}/experiments/{{experimentId}}/report", "host": ["{{baseUrl}}"], "path": ["experiments", "{{experimentId}}", "report"] },
+                "body": { "mode": "raw", "raw": "{\n  \"summary\": \"Custom summary from LLM.\",\n  \"recommendation\": \"continue\",\n  \"next_steps\": [\"Extend the experiment by 2 weeks.\"],\n  \"business_impact\": \"Modest projected uplift.\"\n}" }
+              },
+              "status": "OK", "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 1,\n  \"experiment_id\": 2,\n  \"summary\": \"Custom summary from LLM.\",\n  \"recommendation\": \"continue\",\n  \"business_impact\": \"Modest projected uplift.\",\n  \"next_steps\": [\"Extend the experiment by 2 weeks.\"],\n  \"details\": { \"...\": \"same shape as above\" },\n  \"generated_at\": \"2026-07-24T17:13:10\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

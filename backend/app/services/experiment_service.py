@@ -65,6 +65,27 @@ def update_configuration(
     return exp
 
 
+def update_hypothesis(
+    session: Session, experiment_id: int, hypothesis: dict
+) -> Experiment:
+    """Overwrite the hypothesis blob (AI-generated, then PM-edited metrics)."""
+    exp = get(session, experiment_id)
+    if exp.status not in (ExperimentStatus.DRAFT, ExperimentStatus.VALIDATED):
+        raise ConflictError(
+            f"Cannot edit hypothesis when experiment is {exp.status.value}",
+            details={"experiment_id": experiment_id, "status": exp.status.value},
+        )
+    exp.hypothesis = hypothesis
+    # Editing invalidates a prior validation pass (configuration/validation
+    # are about to be regenerated from the new hypothesis anyway).
+    if exp.status == ExperimentStatus.VALIDATED:
+        exp.status = ExperimentStatus.DRAFT
+        exp.validation = None
+    session.commit()
+    session.refresh(exp)
+    return exp
+
+
 def mark_validated(
     session: Session, experiment_id: int, validation: dict
 ) -> Experiment:

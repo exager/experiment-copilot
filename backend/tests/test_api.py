@@ -18,6 +18,7 @@ from app.catalog.status import ExperimentStatus
 from app.database import Base, configure_database, get_db
 from app.main import app
 from app.models.metrics import Metrics
+from app.models.report import Report
 from app.simulation import scheduler as scheduler_module
 
 
@@ -223,7 +224,8 @@ class TestGenerateHypothesis:
         assert r.status_code == 200, r.text
         body = r.json()
 
-        assert body["thread_id"].startswith(f"ctx-{ctx_id}-")
+        assert body["experiment_id"] > 0
+        assert body["thread_id"] == str(body["experiment_id"])
         assert body["experiment_name"]
         assert body["hypothesis"]
         # problem_statement comes from the context understanding card.
@@ -245,6 +247,74 @@ class TestGenerateHypothesis:
     def test_missing_context_returns_404(self, client, fake_llm):
         r = client.post("/context/9999/hypothesis")
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Full graph-driven flow: /context/{id}/hypothesis -> /validate (metric
+# update, resumes the same graph thread) -> /launch (resumes to completion)
+# ---------------------------------------------------------------------------
+
+
+class TestGraphDrivenFlow:
+    def test_full_flow_reaches_completed_report(self, client, fake_llm):
+        ctx_id = _create_context(client)
+
+        # Generate hypothesis: pauses right after hypothesis_agent.
+        r = client.post(f"/context/{ctx_id}/hypothesis")
+        assert r.status_code == 200, r.text
+        review = r.json()
+        exp_id = review["experiment_id"]
+
+        # Newly-created experiment already carries the AI hypothesis, in DRAFT.
+        exp = client.get(f"/experiments/{exp_id}").json()
+        assert exp["status"] == "draft"
+        assert exp["hypothesis"]["primary_metric"] == "checkout_conversion"
+
+        # PM edits secondary metrics: drop average_order_value, add revenue_per_user.
+        primary_toggles = [
+            {"id": opt["id"], "selected": opt["id"] == "checkout_conversion"}
+            for opt in review["primary_metric"]
+        ]
+        secondary_toggles = [
+            {"id": opt["id"], "selected": opt["id"] == "revenue_per_user"}
+            for opt in review["secondary_metrics"]
+        ]
+
+        r = client.post(
+            f"/experiments/{exp_id}/validate",
+            json={"primary_metric": primary_toggles, "secondary_metrics": secondary_toggles},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["decision"] == "approve"
+
+        # experiment_design_agent + validation_agent ran and persisted.
+        exp = client.get(f"/experiments/{exp_id}").json()
+        assert exp["status"] == "validated"
+        assert exp["configuration"]["feature_flag"] == "checkout_v2"
+        assert exp["hypothesis"]["secondary_metrics"] == ["revenue_per_user"]
+
+        # Launch resumes simulation -> statistics -> explanation -> report -> END.
+        r = client.post(f"/experiments/{exp_id}/launch")
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "completed"
+
+        # A real, persisted simulation series exists (not the empty stub).
+        r = client.get(f"/experiments/{exp_id}/metrics")
+        assert r.status_code == 200
+        metrics_body = r.json()
+        assert metrics_body["latest"] is not None
+        assert len(metrics_body["series"]) > 0
+
+        # report_agent persisted a real Report row via report_service.
+        override = app.dependency_overrides[get_db]
+        gen = override()
+        session = next(gen)
+        try:
+            report = session.query(Report).filter(Report.experiment_id == exp_id).one()
+        finally:
+            gen.close()
+        assert report.summary == "Checkout simplification improved conversion significantly."
+        assert report.next_steps == ["Roll out to 100%"]
 
 
 # ---------------------------------------------------------------------------

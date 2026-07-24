@@ -16,6 +16,7 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel, ConfigDict
 
 from app.api.deps import ExperimentDep, SessionDep
+from app.graph.builder import get_experiment_snapshot, resume_experiment
 from app.schemas.experiment import (
     ExperimentConfiguration,
     ExperimentOut,
@@ -79,9 +80,21 @@ def launch_experiment(
     experiment: ExperimentDep,
     session: SessionDep,
 ) -> ExperimentOut:
-    simulation_service.start(session, experiment.id)
-    row = experiment_service.get(session, experiment.id)
-    return ExperimentOut.model_validate(row)
+    thread_id = str(experiment.id)
+    if get_experiment_snapshot(thread_id).next:
+        # Graph-driven experiment, paused before simulation_node: flip to
+        # RUNNING (run_one_tick requires it) then resume the graph all the
+        # way to END — simulation -> statistics -> explanation -> report,
+        # each persisting via their own services.
+        experiment_service.launch(session, experiment.id)
+        resume_experiment(thread_id)
+        # The agent nodes just persisted via their own DB sessions — refresh
+        # before reading `experiment` back so we see their writes.
+        session.refresh(experiment)
+    else:
+        # Manual (non-graph) experiment: today's behavior, unchanged.
+        simulation_service.start(session, experiment.id)
+    return ExperimentOut.model_validate(experiment)
 
 
 @router.post(

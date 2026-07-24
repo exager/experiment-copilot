@@ -11,8 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.agents import llm
+from app.agents.db import maybe_session
 from app.agents.llm import with_retry
 from app.schemas.agent_outputs import ReportNarrative
+from app.services import report_service
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "report.md").read_text()
 
@@ -61,16 +63,31 @@ def node(state: dict) -> dict:
     model = llm.get_llm().with_structured_output(ReportNarrative)
     result: ReportNarrative = model.invoke(prompt)
 
+    next_steps = result.next_steps or NEXT_ACTIONS.get(category, [])
+    details = {
+        "business_goal": state.get("business_goal"),
+        "hypothesis": state.get("hypothesis"),
+        "configuration": state.get("configuration"),
+        "statistics": statistics,
+    }
+
+    with maybe_session(state) as session:
+        if session is not None:
+            report_service.persist(
+                session,
+                experiment_id=state["experiment_id"],
+                summary=result.summary,
+                recommendation=category,
+                business_impact=business_impact,
+                next_steps=next_steps,
+                details=details,
+            )
+
     report = {
         "summary": result.summary,
         "recommendation": category,
         "business_impact": business_impact,
-        "next_steps": result.next_steps or NEXT_ACTIONS.get(category, []),
-        "details": {
-            "business_goal": state.get("business_goal"),
-            "hypothesis": state.get("hypothesis"),
-            "configuration": state.get("configuration"),
-            "statistics": statistics,
-        },
+        "next_steps": next_steps,
+        "details": details,
     }
     return {"report": report}

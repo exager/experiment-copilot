@@ -9,9 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.agents import llm
+from app.agents.db import maybe_session
 from app.agents.llm import with_retry
 from app.catalog import catalog_summary
 from app.schemas.experiment import Hypothesis
+from app.services import experiment_service
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "hypothesis.md").read_text()
 
@@ -30,4 +32,10 @@ def node(state: dict) -> dict:
     # only emit supported metric ids (see app/schemas/experiment.py).
     model = llm.get_llm().with_structured_output(Hypothesis)
     result: Hypothesis = model.invoke(prompt)
-    return {"hypothesis": result.model_dump()}
+    hypothesis = result.model_dump()
+
+    with maybe_session(state) as session:
+        if session is not None:
+            experiment_service.update_hypothesis(session, state["experiment_id"], hypothesis)
+
+    return {"hypothesis": hypothesis}

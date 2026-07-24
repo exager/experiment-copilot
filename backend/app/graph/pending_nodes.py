@@ -1,79 +1,84 @@
 """Simulation/statistics nodes.
 
-These run the real synthetic-metrics generator (`app.simulation.generator`)
-and the real statistics engine (`app.statistics.engine`) inline, one-shot,
-to take the graph from a validated configuration straight to a finished
-metrics snapshot — enough to demo the full pipeline without a running
-scheduler or database.
+These run the *real*, persisted simulation: `app.simulation.scheduler.run_one_tick`
+(the same tick logic the live 5-second scheduler uses) is looped
+synchronously, inside a single graph resume, until the experiment's
+configured sample size is reached — real `Metrics` rows land in the DB just
+like a live-ticking experiment would, just without waiting on wall-clock
+time between ticks.
 
-This is deliberately NOT the live "every 5 seconds" experiment: that's
-`app.simulation.scheduler`, which ticks a *persisted* Experiment over real
-time and writes `Metrics` rows via the (still-to-be-built) API/service
-layer. Here there is no experiment id yet — the graph runs ahead of
-persistence — so ticks are seeded off a fixed id and replayed in a loop
-until the configured sample size is reached (or a safety cap is hit).
+Requires `experiment_id` in state (always present on this path — these two
+nodes only ever run after `POST /experiments/{id}/launch` has resumed a
+persisted, graph-driven experiment).
 """
 
 from __future__ import annotations
 
-from app.simulation.generator import TickSnapshot, apply_delta, inputs_from_experiment, next_tick
-from app.simulation.scheduler import _guardrail_regressed
-from app.statistics import compute_statistics
+from app.database import SessionLocal
+from app.models.metrics import Metrics
+from app.services import metrics_service, statistics_service
+from app.simulation.scheduler import _guardrail_regressed, run_one_tick
 
-_SEED_EXPERIMENT_ID = 0
 _MAX_TICKS = 500  # covers the largest catalog sample size with headroom
 
 
-def simulation_node(state: dict) -> dict:
-    hypothesis = state.get("hypothesis") or {}
-    configuration = state.get("configuration") or {}
-    inputs = inputs_from_experiment(
-        _SEED_EXPERIMENT_ID, hypothesis=hypothesis, configuration=configuration
-    )
-
-    snapshot = TickSnapshot.zero()
-    tick_index = 0
-    total_users = 0
-    while total_users < inputs.sample_size and tick_index < _MAX_TICKS:
-        delta = next_tick(snapshot, inputs, tick_index)
-        snapshot = apply_delta(snapshot, delta)
-        total_users = snapshot.users_control + snapshot.users_variant
-        tick_index += 1
-
-    metrics = {
-        "users_control": snapshot.users_control,
-        "users_variant": snapshot.users_variant,
-        "conversion_control": snapshot.conversion_control,
-        "conversion_variant": snapshot.conversion_variant,
-        "revenue_control": snapshot.revenue_control,
-        "revenue_variant": snapshot.revenue_variant,
-        "bounce_events_control": snapshot.bounce_events_control,
-        "bounce_events_variant": snapshot.bounce_events_variant,
-        "guardrails": snapshot.guardrails,
+def _metrics_row_to_dict(row: Metrics) -> dict:
+    return {
+        "users_control": row.users_control,
+        "users_variant": row.users_variant,
+        "conversion_control": row.conversion_control,
+        "conversion_variant": row.conversion_variant,
+        "revenue_control": row.revenue_control,
+        "revenue_variant": row.revenue_variant,
+        "bounce_events_control": row.bounce_events_control,
+        "bounce_events_variant": row.bounce_events_variant,
+        "guardrails": row.guardrails,
     }
+
+
+def simulation_node(state: dict) -> dict:
+    experiment_id = state["experiment_id"]
+
+    completed = False
+
+    def _mark_complete(_experiment_id: int) -> None:
+        nonlocal completed
+        completed = True
+
+    ticks = 0
+    while not completed and ticks < _MAX_TICKS:
+        run_one_tick(SessionLocal, experiment_id, on_complete=_mark_complete)
+        ticks += 1
+
+    session = SessionLocal()
+    try:
+        latest = metrics_service.latest(session, experiment_id)
+        metrics = _metrics_row_to_dict(latest) if latest is not None else {}
+    finally:
+        session.close()
+
     return {"metrics": metrics}
 
 
 def statistics_node(state: dict) -> dict:
-    metrics = state.get("metrics") or {}
+    experiment_id = state["experiment_id"]
     configuration = state.get("configuration") or {}
-    users_control = metrics.get("users_control") or 0
-    users_variant = metrics.get("users_variant") or 0
 
-    statistics = compute_statistics(
-        users_control=users_control,
-        users_variant=users_variant,
-        conversion_control=metrics.get("conversion_control") or 0,
-        conversion_variant=metrics.get("conversion_variant") or 0,
-    ).model_dump()
+    session = SessionLocal()
+    try:
+        stats = statistics_service.snapshot(session, experiment_id).model_dump()
+        latest = metrics_service.latest(session, experiment_id)
+    finally:
+        session.close()
 
-    # The recommendation rule engine (app.rules.load_recommendation_engine, driven
-    # by explanation_agent.decide_recommendation) reads these two fields to decide
-    # "rollback" and "stop_when_sample_exhausted" — without them it can only ever
-    # reach scale/stop/continue.
+    # The recommendation rule engine reads these two fields to decide
+    # "rollback" and "stop_when_sample_exhausted" — without them it can only
+    # ever reach scale/stop/continue (see recommendation_rules.json).
     sample_size = configuration.get("sample_size") or 0
-    total_users = users_control + users_variant
-    statistics["sample_ratio"] = min(1.0, total_users / sample_size) if sample_size else 0.0
-    statistics["guardrail_regression"] = _guardrail_regressed(metrics.get("guardrails"))
+    total_users = 0 if latest is None else latest.users_control + latest.users_variant
+    stats["sample_ratio"] = min(1.0, total_users / sample_size) if sample_size else 0.0
+    stats["guardrail_regression"] = _guardrail_regressed(
+        latest.guardrails if latest is not None else None
+    )
 
-    return {"statistics": statistics}
+    return {"statistics": stats}
