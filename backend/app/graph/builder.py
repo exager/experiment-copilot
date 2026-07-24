@@ -22,6 +22,7 @@ from app.agents import (
 )
 from app.graph.pending_nodes import simulation_node, statistics_node
 from app.graph.state import ExperimentState
+from app.langsmith_config import get_run_config
 
 
 def build_graph():
@@ -68,11 +69,17 @@ def get_graph():
 
 def start_experiment(thread_id: str, initial_state: dict) -> dict:
     """Run the graph up to the human-in-the-loop pause before simulation."""
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {
+        "configurable": {"thread_id": thread_id},
+        **get_run_config("experiment_pipeline.start", thread_id),
+    }
     return get_graph().invoke(initial_state, config)
 
 
 def resume_experiment(thread_id: str) -> dict:
     """Resume a paused graph after the user launches the experiment."""
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {
+        "configurable": {"thread_id": thread_id},
+        **get_run_config("experiment_pipeline.resume", thread_id),
+    }
     return get_graph().invoke(None, config)

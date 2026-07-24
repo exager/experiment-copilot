@@ -1,7 +1,26 @@
-langgraph
-langchain-core
-langchain-google-genai
-pydantic
-python-dotenv
-tenacity
-pytest
+# ── AI / LLM stack ──
+langchain>=1.0.0
+langchain-core>=1.0.0
+langchain-google-genai>=2.0.0
+langgraph>=1.0.0
+langsmith>=0.3.0
+
+# ── Data validation / config ──
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+python-dotenv>=1.0.0
+
+# ── Resilience ──
+tenacity>=8.2.0
+
+# ── Statistics (shared with backend) ──
+scipy>=1.13.0
+numpy>=1.26.0
+
+# ── Backend API stack (only needed to run the full FastAPI app) ──
+fastapi>=0.111.0
+uvicorn>=0.30.0
+sqlalchemy>=2.0.0
+
+# ── Testing ──
+pytest>=8.0.0
