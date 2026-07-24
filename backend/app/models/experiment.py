@@ -7,7 +7,6 @@ their shapes without a schema migration.
 
 from __future__ import annotations
 
-import enum
 from datetime import datetime
 from typing import Optional
 
@@ -15,17 +14,10 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
+from app.catalog.status import ExperimentStatus  # re-exported below for back-compat
 from app.database.base import Base
 
-
-class ExperimentStatus(str, enum.Enum):
-    """Lifecycle states for an experiment."""
-
-    DRAFT = "draft"
-    VALIDATED = "validated"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    STOPPED = "stopped"
+__all__ = ["Experiment", "ExperimentStatus"]
 
 
 class Experiment(Base):
