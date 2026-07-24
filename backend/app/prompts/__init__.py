@@ -1,0 +1,1 @@
+"""Experiment Copilot prompts application package."""

@@ -1,0 +1,1 @@
+"""Experiment Copilot schemas application package."""
