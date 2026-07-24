@@ -1,0 +1,13 @@
+[
+  {
+    "id": "exp_12839",
+    "name": "Checkout Simplification",
+    "status": "completed",
+    "completed_at": "7 Jun 2025",
+    "duration_days": 14,
+    "recommendation": "SCALE",
+    "lift": 14.12,
+    "confidence": 96.3,
+    "revenue_impact": "₹1.8 Cr/year"
+  }
+]

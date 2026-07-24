@@ -64,3 +64,15 @@ logs/
 team-distribution.md
 work.md
 dev3-handoff.md
+
+# --- Frontend ---
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# --- API response reference files (not source code) ---
+**/*Response.json
+**/*response.json
+**/catalogue-response.json
+**/launcAPIResponse.json

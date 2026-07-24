@@ -1,0 +1,51 @@
+{
+  "experiment_summary": {
+    "business_goal": "Increase checkout conversion by 10%",
+    "hypothesis": "Simplifying the checkout form will increase conversion because users face less friction.",
+    "feature_flag": "checkout_v2",
+    "target_audience": "Returning Users on Mobile (Android)",
+    "traffic_allocation": { "control": 50, "variant": 50 },
+    "duration": "14 Days",
+    "experiment_id": "exp_12839",
+    "started_at": "24 May 2025, 10:30 AM"
+  },
+  "results": {
+    "checkout_conversion": {
+      "control": "4.32%",
+      "variant": "4.93%",
+      "uplift": "↑ 14.12%"
+    },
+    "confidence": "96.3%",
+    "p_value": "0.0008",
+    "average_order_value": {
+      "control": "₹542",
+      "variant": "₹616",
+      "uplift": "↑ 13.65%"
+    },
+    "bounce_rate": {
+      "control": "32.12%",
+      "variant": "28.45%",
+      "improvement": "↓ 11.44%"
+    },
+    "payment_failure_rate": {
+      "control": "1.23%",
+      "variant": "1.19%",
+      "improvement": "↓ 3.25%"
+    }
+  },
+  "business_impact": {
+    "estimated_revenue": "₹1.8 Cr",
+    "period": "Per Year",
+    "description": "Based on current traffic and conversion uplift."
+  },
+  "ai_recommendation": {
+    "action": "SCALE",
+    "reasoning": "The variant shows statistically significant improvement with no negative impact on guardrail metrics.",
+    "next_actions": [
+      "Scale rollout to 100% of the audience",
+      "Monitor metrics for next 7 days",
+      "Plan A/A test before further iterations"
+    ]
+  },
+  "key_takeaway": "The checkout simplification experiment has delivered a 14.12% uplift in conversion rate with high confidence. We recommend scaling the variant to maximize business impact."
+}

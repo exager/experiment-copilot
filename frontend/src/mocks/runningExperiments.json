@@ -1,0 +1,30 @@
+[
+  {
+    "id": "exp_12839",
+    "name": "Checkout Simplification",
+    "status": "running",
+    "started_at": "24 May 2025, 10:30 AM",
+    "duration_days": 14,
+    "days_running": 7,
+    "control_conversion": 4.32,
+    "variant_conversion": 4.93,
+    "lift": 14.12,
+    "confidence": 96.3,
+    "total_users": 24832,
+    "winner": "Variant"
+  },
+  {
+    "id": "exp_12840",
+    "name": "Cart Button Size Test",
+    "status": "running",
+    "started_at": "28 May 2025, 09:00 AM",
+    "duration_days": 10,
+    "days_running": 3,
+    "control_conversion": 3.20,
+    "variant_conversion": 3.48,
+    "lift": 8.75,
+    "confidence": 72.1,
+    "total_users": 8400,
+    "winner": "Too Early"
+  }
+]

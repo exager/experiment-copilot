@@ -1,0 +1,79 @@
+{
+  "id": "exp_12839",
+  "name": "Checkout Simplification",
+  "status": "running",
+  "started_at": "24 May 2025, 10:30 AM",
+  "experiment_id": "exp_12839",
+  "time_elapsed": "02h : 35m : 18s",
+  "duration_days": 14,
+  "days_running": 7,
+  "stats": {
+    "control_conversion": 4.32,
+    "variant_conversion": 4.93,
+    "lift": 14.12,
+    "confidence": 96.3,
+    "winner": "Variant",
+    "winner_status": "Leading",
+    "users_control": 12416,
+    "users_variant": 12416
+  },
+  "charts": {
+    "conversion_over_time": [
+      { "time": "09:30", "control": 3.8, "variant": 4.2 },
+      { "time": "09:45", "control": 3.9, "variant": 4.4 },
+      { "time": "10:00", "control": 4.0, "variant": 4.5 },
+      { "time": "10:15", "control": 4.1, "variant": 4.6 },
+      { "time": "10:30", "control": 4.0, "variant": 4.7 },
+      { "time": "10:45", "control": 4.2, "variant": 4.8 },
+      { "time": "11:00", "control": 4.1, "variant": 4.9 },
+      { "time": "11:15", "control": 4.3, "variant": 5.0 },
+      { "time": "11:30", "control": 4.3, "variant": 4.9 }
+    ],
+    "revenue_per_user": [
+      { "time": "09:30", "control": 420, "variant": 480 },
+      { "time": "09:45", "control": 440, "variant": 510 },
+      { "time": "10:00", "control": 460, "variant": 530 },
+      { "time": "10:15", "control": 480, "variant": 560 },
+      { "time": "10:30", "control": 500, "variant": 580 },
+      { "time": "10:45", "control": 510, "variant": 600 },
+      { "time": "11:00", "control": 520, "variant": 610 },
+      { "time": "11:15", "control": 530, "variant": 620 },
+      { "time": "11:30", "control": 542, "variant": 616 }
+    ],
+    "traffic_split": { "control": 50, "variant": 50 }
+  },
+  "key_metrics": [
+    {
+      "metric": "Checkout Conversion",
+      "control": "4.32%",
+      "variant": "4.93%",
+      "uplift": "+ 14.12%",
+      "p_value": "0.0008",
+      "significance": "Significant"
+    },
+    {
+      "metric": "Average Order Value",
+      "control": "₹542",
+      "variant": "₹616",
+      "uplift": "+ 13.65%",
+      "p_value": "0.0123",
+      "significance": "Significant"
+    },
+    {
+      "metric": "Bounce Rate",
+      "control": "32.12%",
+      "variant": "28.45%",
+      "uplift": "↓ 11.44%",
+      "p_value": "0.0187",
+      "significance": "Significant"
+    },
+    {
+      "metric": "Payment Failure Rate",
+      "control": "1.23%",
+      "variant": "1.19%",
+      "uplift": "↓ 3.25%",
+      "p_value": "0.4210",
+      "significance": "Not Significant"
+    }
+  ]
+}
