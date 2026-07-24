@@ -1,29 +1,33 @@
 """Shared pytest fixtures for the agent/graph test suite.
 
-Monkeypatches app.models.experiment (which doesn't exist yet — only an
-empty app/models/__init__.py) into sys.modules before any app.schemas
-import happens, so the whole suite runs against plain JSON/dict state and
-a fake LLM, with no real database or ORM model involved.
+Historically this file installed a fake `app.models.experiment` module in
+`sys.modules` because the real ORM didn't exist yet. It does now, so we
+only fall back to the fake when the real module can't be imported (e.g.
+a broken working tree).
 """
 
 from __future__ import annotations
 
 import enum
+import importlib
 import sys
 import types
 
-if "app.models.experiment" not in sys.modules:
-    _fake_experiment_model = types.ModuleType("app.models.experiment")
+try:
+    importlib.import_module("app.models.experiment")
+except Exception:  # pragma: no cover — only used when the real model is broken
+    if "app.models.experiment" not in sys.modules:
+        _fake_experiment_model = types.ModuleType("app.models.experiment")
 
-    class ExperimentStatus(str, enum.Enum):
-        DRAFT = "draft"
-        VALIDATED = "validated"
-        RUNNING = "running"
-        COMPLETED = "completed"
-        STOPPED = "stopped"
+        class ExperimentStatus(str, enum.Enum):
+            DRAFT = "draft"
+            VALIDATED = "validated"
+            RUNNING = "running"
+            COMPLETED = "completed"
+            STOPPED = "stopped"
 
-    _fake_experiment_model.ExperimentStatus = ExperimentStatus
-    sys.modules["app.models.experiment"] = _fake_experiment_model
+        _fake_experiment_model.ExperimentStatus = ExperimentStatus
+        sys.modules["app.models.experiment"] = _fake_experiment_model
 
 import pytest
 
