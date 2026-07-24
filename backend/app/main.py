@@ -9,7 +9,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 
 from app.api import register_routers
@@ -79,6 +81,29 @@ app = FastAPI(
     version="0.1.0",
     description="AI-powered A/B experiment decision-support platform.",
     lifespan=lifespan,
+)
+
+
+# --- Middleware (CORS + trusted hosts) -------------------------------------
+# Wide-open by default so the frontend can hit the API from any origin during
+# development. Restrict via `CORS_ORIGINS` / `ALLOWED_HOSTS` env vars in prod.
+_settings = get_settings()
+_wildcard_origins = _settings.cors_origins == ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_settings.cors_origins,
+    # The CORS spec forbids `allow_credentials=True` together with a wildcard
+    # origin, so we flip it off when origins is ["*"].
+    allow_credentials=not _wildcard_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=_settings.allowed_hosts,
 )
 
 

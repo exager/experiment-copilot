@@ -161,6 +161,33 @@ def test_catalog(client):
 
 
 # ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+
+
+def test_cors_preflight(client):
+    """OPTIONS preflight must return `access-control-allow-origin: *`."""
+    r = client.options(
+        "/context",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == "*"
+    # Wildcard origins require credentials to be disabled.
+    assert r.headers.get("access-control-allow-credentials") != "true"
+
+
+def test_cors_simple_request_includes_origin(client):
+    r = client.get("/health", headers={"Origin": "http://localhost:5173"})
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == "*"
+
+
+# ---------------------------------------------------------------------------
 # /context
 # ---------------------------------------------------------------------------
 
