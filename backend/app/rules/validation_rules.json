@@ -1,0 +1,182 @@
+{
+  "rules": [
+    {
+      "id": "traffic_split_sums_to_one",
+      "name": "Traffic split must sum to 1.0",
+      "priority": 100,
+      "when": {
+        "op": "between",
+        "field": "configuration.traffic_split_sum",
+        "value": [0.999, 1.001]
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Traffic split sums to 1.0."
+      },
+      "on_mismatch": {
+        "decision": "reject",
+        "message": "Traffic split control + variant must sum to 1.0."
+      }
+    },
+    {
+      "id": "traffic_control_positive",
+      "name": "Control arm must receive traffic",
+      "priority": 95,
+      "when": {
+        "op": "gt",
+        "field": "configuration.traffic_split.control",
+        "value": 0.0
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Control arm allocated."
+      },
+      "on_mismatch": {
+        "decision": "reject",
+        "message": "Control arm has zero traffic allocation."
+      }
+    },
+    {
+      "id": "traffic_variant_positive",
+      "name": "Variant arm must receive traffic",
+      "priority": 95,
+      "when": {
+        "op": "gt",
+        "field": "configuration.traffic_split.variant",
+        "value": 0.0
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Variant arm allocated."
+      },
+      "on_mismatch": {
+        "decision": "reject",
+        "message": "Variant arm has zero traffic allocation."
+      }
+    },
+    {
+      "id": "duration_reasonable",
+      "name": "Experiment duration must be between 1 and 90 days",
+      "priority": 80,
+      "when": {
+        "op": "between",
+        "field": "configuration.duration_days",
+        "value": [1, 90]
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Duration is within accepted bounds."
+      },
+      "on_mismatch": {
+        "decision": "reject",
+        "message": "Duration must be between 1 and 90 days."
+      }
+    },
+    {
+      "id": "min_sample_size",
+      "name": "Sample size must be at least 1000 users per arm",
+      "priority": 70,
+      "when": {
+        "op": "gte",
+        "field": "configuration.sample_size",
+        "value": 1000
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Sample size is sufficient."
+      },
+      "on_mismatch": {
+        "decision": "warn",
+        "message": "Sample size below 1000 may yield inconclusive results."
+      }
+    },
+    {
+      "id": "feature_flag_naming",
+      "name": "Feature flag name follows snake_case convention",
+      "priority": 60,
+      "when": {
+        "op": "regex",
+        "field": "configuration.feature_flag",
+        "value": "^[a-z][a-z0-9_]{2,63}$"
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Feature flag name is valid."
+      },
+      "on_mismatch": {
+        "decision": "warn",
+        "message": "Feature flag should be snake_case, 3-64 chars."
+      }
+    },
+    {
+      "id": "audience_specified",
+      "name": "Target audience must be specified",
+      "priority": 90,
+      "when": {
+        "op": "is_not_null",
+        "field": "configuration.audience"
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Audience specified."
+      },
+      "on_mismatch": {
+        "decision": "reject",
+        "message": "Target audience is required."
+      }
+    },
+    {
+      "id": "primary_metric_defined",
+      "name": "A primary success metric must be defined",
+      "priority": 90,
+      "when": {
+        "op": "is_not_null",
+        "field": "hypothesis.primary_metric"
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Primary metric defined."
+      },
+      "on_mismatch": {
+        "decision": "reject",
+        "message": "Primary success metric is required."
+      }
+    },
+    {
+      "id": "guardrail_metrics_present",
+      "name": "At least one guardrail metric should be defined",
+      "priority": 50,
+      "when": {
+        "op": "gte",
+        "field": "hypothesis.guardrail_count",
+        "value": 1
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Guardrail metric(s) defined."
+      },
+      "on_mismatch": {
+        "decision": "warn",
+        "message": "No guardrail metrics defined — risk of undetected regressions."
+      }
+    },
+    {
+      "id": "confidence_level_valid",
+      "name": "Confidence level should be at least 0.90",
+      "priority": 55,
+      "when": {
+        "op": "gte",
+        "field": "configuration.confidence_level",
+        "value": 0.9
+      },
+      "on_match": {
+        "decision": "approve",
+        "message": "Confidence level is acceptable."
+      },
+      "on_mismatch": {
+        "decision": "warn",
+        "message": "Confidence level below 0.90 is unusual for A/B tests."
+      }
+    }
+  ]
+}
