@@ -46,8 +46,6 @@ Run from the ``backend/`` directory::
 
 from __future__ import annotations
 
-from . import _compat  # noqa: F401  (install app.models.experiment shim FIRST)
-
 import app.config  # noqa: F401  (load backend/.env so GEMINI/LANGCHAIN keys are set)
 
 import argparse

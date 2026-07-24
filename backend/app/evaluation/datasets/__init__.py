@@ -220,14 +220,20 @@ VALIDATION_DATASET: list[Example] = [
     Example(
         name="shopmax_valid_config",
         agent="validation",
-        input_state={"configuration": dict(SHOPMAX_CONFIG)},
+        input_state={
+            "configuration": dict(SHOPMAX_CONFIG),
+            "hypothesis": dict(SHOPMAX_HYPOTHESIS),
+        },
         expected={"keywords": [], "expected_decision": "approve"},
         notes="A well-formed config should be approved with a high validation score.",
     ),
     Example(
         name="fintrack_valid_config",
         agent="validation",
-        input_state={"configuration": dict(FINTRACK_CONFIG)},
+        input_state={
+            "configuration": dict(FINTRACK_CONFIG),
+            "hypothesis": dict(FINTRACK_HYPOTHESIS),
+        },
         expected={"keywords": [], "expected_decision": "approve"},
         notes="A well-formed config should be approved with a high validation score.",
     ),

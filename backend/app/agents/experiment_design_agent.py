@@ -10,7 +10,8 @@ from pathlib import Path
 
 from app.agents import llm
 from app.agents.llm import with_retry
-from app.schemas.agent_outputs import ExperimentConfigurationOutput
+from app.catalog import catalog_summary
+from app.schemas.experiment import ExperimentConfiguration
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "experiment_design.md").read_text()
 
@@ -24,7 +25,10 @@ def node(state: dict) -> dict:
         primary_metric=hypothesis.get("primary_metric", ""),
         secondary_metrics=", ".join(hypothesis.get("secondary_metrics", [])),
         guardrail_metrics=", ".join(hypothesis.get("guardrail_metrics", [])),
+        catalog=catalog_summary(),
     )
-    model = llm.get_llm().with_structured_output(ExperimentConfigurationOutput)
-    result: ExperimentConfigurationOutput = model.invoke(prompt)
-    return {"configuration": result.model_dump()}
+    # ExperimentConfiguration constrains audience/traffic-split to the catalog
+    # and derives the concrete traffic_split from the chosen option.
+    model = llm.get_llm().with_structured_output(ExperimentConfiguration)
+    result: ExperimentConfiguration = model.invoke(prompt)
+    return {"configuration": result.model_dump(mode="json")}

@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import _compat  # noqa: F401  (install app.models.experiment shim first)
-
 __all__ = ["run_offline", "run_online", "summarize"]
 
 

@@ -51,6 +51,7 @@ EXPECTED_KEYS: dict[str, set[str]] = {
         "current_flow",
         "feature",
         "pain_point",
+        "catalog",
     },
     "experiment_design.md": {
         "experiment_name",
@@ -58,6 +59,7 @@ EXPECTED_KEYS: dict[str, set[str]] = {
         "primary_metric",
         "secondary_metrics",
         "guardrail_metrics",
+        "catalog",
     },
     "validation.md": {
         "configuration",

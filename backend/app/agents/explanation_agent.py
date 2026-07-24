@@ -1,43 +1,47 @@
 """Explanation Agent node.
 
-Decides the recommendation category deterministically from the computed
-statistics, then asks the LLM to narrate a single rationale paragraph
-around that decision. The LLM never picks the category itself.
+Decides the recommendation category with the configurable recommendation rule
+engine (:mod:`app.rules`), then asks the LLM to narrate a single rationale
+paragraph around that decision. The LLM never picks the category itself.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 from app.agents import llm
 from app.agents.llm import with_retry
+from app.rules import load_recommendation_engine
 from app.schemas.agent_outputs import RationaleOutput
 from app.schemas.metrics import Recommendation, RecommendationOut
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "explanation.md").read_text()
 
 
-def decide_recommendation(statistics: dict) -> Recommendation:
-    """Deterministic recommendation rules.
+def _rule_context(statistics: dict) -> dict[str, Any]:
+    """Shape statistics into the dot-path context the recommendation rules use.
 
-    scale     - significant, positive lift above threshold
-    stop      - lift is negative
-    continue  - anything else (not yet conclusive)
-
-    TODO: guardrail-metric regression isn't modeled in MetricPoint yet —
-    once Dev 2 adds per-guardrail tracking, this should force "rollback"
-    whenever a guardrail regresses materially, regardless of primary-metric
-    lift, per the journey doc's rule set.
+    ``guardrail.regression`` and ``progress.sample_ratio`` are supplied by the
+    statistics layer once it tracks them; until then they default to safe
+    values (no regression, run not exhausted) so the engine falls through to
+    scale/stop/continue based on winner + confidence + lift.
     """
-    confidence = statistics.get("confidence") or 0.0
-    lift = statistics.get("conversion_lift") or 0.0
-    is_significant = statistics.get("is_significant", False)
+    return {
+        "statistics": {
+            "winner": statistics.get("winner"),
+            "confidence": statistics.get("confidence") or 0.0,
+            "conversion_lift": statistics.get("conversion_lift") or 0.0,
+        },
+        "guardrail": {"regression": bool(statistics.get("guardrail_regression", False))},
+        "progress": {"sample_ratio": statistics.get("sample_ratio") or 0.0},
+    }
 
-    if lift < 0:
-        return "stop"
-    if is_significant and confidence >= 0.95 and lift > 0.05:
-        return "scale"
-    return "continue"
+
+def decide_recommendation(statistics: dict) -> Recommendation:
+    """Return the recommendation category from the shared rule engine."""
+    result = load_recommendation_engine().evaluate(_rule_context(statistics))
+    return cast(Recommendation, result.decision)
 
 
 @with_retry

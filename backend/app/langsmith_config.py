@@ -29,15 +29,17 @@ _DEFAULT_ENDPOINT = "https://api.smith.langchain.com"
 
 
 def _load_dotenv() -> None:
-    """Best-effort load of backend/.env so keys are available (optional dep)."""
+    """Ensure backend/.env is loaded.
+
+    Delegates to the single loader in ``app.config`` so there is exactly one
+    dotenv implementation in the codebase. Falls back to a no-op if that import
+    is unavailable, keeping this module import-safe.
+    """
     try:
-        from dotenv import load_dotenv
-    except Exception:  # python-dotenv not installed — env may be set another way
+        from app.config import load_env
+    except Exception:  # pragma: no cover - defensive
         return
-    # backend/.env sits two levels up from this file (app/ -> backend/).
-    backend_env = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-    load_dotenv(backend_env)
-    load_dotenv()  # also pick up a repo-root/.env or ambient environment
+    load_env()
 
 
 def init_langsmith() -> bool:

@@ -31,15 +31,14 @@ except Exception:  # pragma: no cover — only used when the real model is broke
 
 import pytest
 
+from app.catalog import Audience, TrafficSplitOption
 from app.schemas.agent_outputs import (
     ContextUnderstanding,
-    ExperimentConfigurationOutput,
-    HypothesisOutput,
     RationaleOutput,
     ReportNarrative,
-    TrafficSplit,
     ValidationEnrichment,
 )
+from app.schemas.experiment import ExperimentConfiguration, Hypothesis
 
 FAKE_RESPONSES = {
     ContextUnderstanding: ContextUnderstanding(
@@ -50,19 +49,22 @@ FAKE_RESPONSES = {
         target_users="Returning Customers",
         ai_confidence=94,
     ),
-    HypothesisOutput: HypothesisOutput(
+    Hypothesis: Hypothesis(
         experiment_name="Checkout Simplification",
-        hypothesis="Reducing checkout friction improves conversion",
-        primary_metric="Checkout Conversion",
-        secondary_metrics=["Bounce Rate", "Average Order Value"],
-        guardrail_metrics=["Payment Failure Rate"],
+        hypothesis="Reducing checkout friction improves conversion for returning shoppers",
+        primary_metric="checkout_conversion",
+        secondary_metrics=["average_order_value"],
+        guardrail_metrics=["bounce_rate"],
     ),
-    ExperimentConfigurationOutput: ExperimentConfigurationOutput(
+    ExperimentConfiguration: ExperimentConfiguration(
         feature_flag="checkout_v2",
-        audience="Returning customers",
-        traffic_split=TrafficSplit(control=0.5, variant=0.5),
+        audience=Audience.RETURNING_USERS,
+        traffic_split_option=TrafficSplitOption.SPLIT_50_50,
         duration_days=14,
         sample_size=5000,
+        confidence_level=0.95,
+        baseline_conversion_rate=0.041,
+        expected_lift=0.05,
     ),
     ValidationEnrichment: ValidationEnrichment(
         validation_score=0.92, warnings=[], suggestions=[], explanation="Looks good"

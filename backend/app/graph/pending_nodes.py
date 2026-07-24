@@ -17,6 +17,7 @@ until the configured sample size is reached (or a safety cap is hit).
 from __future__ import annotations
 
 from app.simulation.generator import TickSnapshot, apply_delta, inputs_from_experiment, next_tick
+from app.simulation.scheduler import _guardrail_regressed
 from app.statistics import compute_statistics
 
 _SEED_EXPERIMENT_ID = 0
@@ -55,10 +56,24 @@ def simulation_node(state: dict) -> dict:
 
 def statistics_node(state: dict) -> dict:
     metrics = state.get("metrics") or {}
+    configuration = state.get("configuration") or {}
+    users_control = metrics.get("users_control") or 0
+    users_variant = metrics.get("users_variant") or 0
+
     statistics = compute_statistics(
-        users_control=metrics.get("users_control") or 0,
-        users_variant=metrics.get("users_variant") or 0,
+        users_control=users_control,
+        users_variant=users_variant,
         conversion_control=metrics.get("conversion_control") or 0,
         conversion_variant=metrics.get("conversion_variant") or 0,
-    )
-    return {"statistics": statistics.model_dump()}
+    ).model_dump()
+
+    # The recommendation rule engine (app.rules.load_recommendation_engine, driven
+    # by explanation_agent.decide_recommendation) reads these two fields to decide
+    # "rollback" and "stop_when_sample_exhausted" — without them it can only ever
+    # reach scale/stop/continue.
+    sample_size = configuration.get("sample_size") or 0
+    total_users = users_control + users_variant
+    statistics["sample_ratio"] = min(1.0, total_users / sample_size) if sample_size else 0.0
+    statistics["guardrail_regression"] = _guardrail_regressed(metrics.get("guardrails"))
+
+    return {"statistics": statistics}
