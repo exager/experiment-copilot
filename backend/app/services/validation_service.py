@@ -18,6 +18,22 @@ from app.schemas.validation import ValidationResult
 from app.services import experiment_service
 
 
+def deterministic_score(result: ValidationResult) -> float:
+    """Compute a launch-readiness score from the rule result alone.
+
+    Used as a fallback when the LLM enrichment (which normally sets
+    `validation_score`) is unavailable — e.g. the Gemini quota is exhausted.
+    Bands mirror `app/prompts/validation.md`: reject < 0.4, approve >= 0.85.
+    """
+    total = len(result.rules_evaluated) or 1
+    ratio = len(result.rules_matched) / total
+    if result.decision == "reject":
+        return round(min(0.39, 0.4 * ratio), 2)
+    if result.decision == "warn":
+        return round(0.5 + 0.2 * ratio, 2)  # ~0.5-0.7
+    return round(0.85 + 0.15 * ratio, 2)  # approve ~0.85-1.0
+
+
 def _build_context(hypothesis: dict, configuration: dict) -> dict:
     """Flatten the JSON blobs into the shape the validation rules expect."""
     traffic = configuration.get("traffic_split") or {}
@@ -54,6 +70,10 @@ def validate(session: Session, experiment_id: int) -> ValidationResult:
     exp = experiment_service.get(session, experiment_id)
     ctx = _build_context(exp.hypothesis or {}, exp.configuration or {})
     result = load_validation_engine().evaluate(ctx)
-    # Persist rule-engine portion; AI narration merges in later.
+    # Fill a deterministic score + warnings so the result is never returned with
+    # a null score / empty guidance; the AI narration overrides these later when
+    # the Validation Agent's LLM enrichment succeeds.
+    result.validation_score = deterministic_score(result)
+    result.warnings = [r.message for r in result.rules_rejected if r.message]
     experiment_service.mark_validated(session, experiment_id, result.model_dump())
     return result

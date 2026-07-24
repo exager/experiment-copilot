@@ -23,6 +23,7 @@ from app.rules import load_validation_engine
 from app.schemas.agent_outputs import ValidationEnrichment
 from app.schemas.validation import ValidationResult
 from app.services import experiment_service, validation_service
+from app.services.validation_service import deterministic_score
 
 _PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "validation.md").read_text()
 
@@ -60,23 +61,34 @@ def node(state: dict) -> dict:
         else:
             rule_result = evaluate_rules(configuration, hypothesis)
 
+        # Guarantee a non-null score even on the non-session path or if the LLM
+        # enrichment below fails (e.g. the Gemini quota is exhausted).
+        if rule_result.validation_score is None:
+            rule_result.validation_score = deterministic_score(rule_result)
+
         prompt = _PROMPT.format(
             configuration=configuration,
             decision=rule_result.decision,
             rules_matched=[r.name for r in rule_result.rules_matched],
             rules_rejected=[r.name for r in rule_result.rules_rejected],
         )
-        model = llm.get_llm().with_structured_output(ValidationEnrichment)
-        enrichment: ValidationEnrichment = model.invoke(prompt)
-
-        validation = rule_result.model_copy(
-            update={
-                "validation_score": enrichment.validation_score,
-                "warnings": enrichment.warnings,
-                "suggestions": enrichment.suggestions,
-                "explanation": enrichment.explanation,
-            }
-        )
+        # The LLM only narrates; it never re-decides pass/fail. If it fails we
+        # keep the deterministic rule result (with its fallback score) rather
+        # than dropping the validation entirely.
+        try:
+            model = llm.get_llm().with_structured_output(ValidationEnrichment)
+            enrichment: ValidationEnrichment = model.invoke(prompt)
+            validation = rule_result.model_copy(
+                update={
+                    "validation_score": enrichment.validation_score,
+                    "warnings": enrichment.warnings,
+                    "suggestions": enrichment.suggestions,
+                    "explanation": enrichment.explanation,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 — degrade gracefully on any LLM error
+            validation = rule_result
+            state.setdefault("errors", []).append(f"validation_enrichment: {exc}")
 
         if session is not None:
             experiment_service.mark_validated(

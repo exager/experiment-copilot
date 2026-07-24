@@ -76,6 +76,34 @@ def test_validation_agent_node(fake_llm):
     assert result["validation"]["rules_rejected"] == []
 
 
+def test_validation_agent_node_falls_back_on_llm_failure(failing_llm):
+    """When the LLM enrichment fails (e.g. quota exhausted), the node keeps the
+    deterministic rule result with a non-null fallback score instead of losing
+    the validation entirely."""
+    state = {
+        **CONTEXT_STATE,
+        "hypothesis": {
+            "primary_metric": "Checkout Conversion",
+            "guardrail_metrics": ["Payment Failure Rate"],
+        },
+        "configuration": {
+            "feature_flag": "checkout_v2",
+            "audience": "returning_users",
+            "traffic_split": {"control": 0.5, "variant": 0.5},
+            "duration_days": 14,
+            "sample_size": 5000,
+            "confidence_level": 0.95,
+            "baseline_conversion_rate": 0.1,
+            "expected_lift": 0.05,
+        },
+    }
+    result = validation_agent.node(state)
+    assert result["validation"]["decision"] == "approve"
+    # Deterministic fallback score is filled even though the LLM raised.
+    assert result["validation"]["validation_score"] is not None
+    assert result["validation"]["validation_score"] >= 0.85
+
+
 def test_explanation_agent_node(fake_llm):
     state = {
         **CONTEXT_STATE,

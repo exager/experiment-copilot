@@ -54,5 +54,10 @@ def validate_experiment(
         # (and the `experiment` it already loaded) doesn't know about those
         # writes until refreshed.
         session.refresh(experiment)
-        return ValidationResult.model_validate(experiment.validation)
+        if isinstance(experiment.validation, dict) and experiment.validation:
+            return ValidationResult.model_validate(experiment.validation)
+        # The graph agents failed to persist a valid result (e.g. the LLM quota
+        # was exhausted). Fall back to the deterministic rule engine — which
+        # also fills the score — instead of returning a 500.
+        return validation_service.validate(session, experiment.id)
     return validation_service.validate(session, experiment.id)

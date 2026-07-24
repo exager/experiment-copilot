@@ -394,9 +394,44 @@ class TestValidate:
         assert r.status_code == 200
         result = r.json()
         assert result["decision"] == "approve"
+        # Deterministic score is filled even without LLM enrichment.
+        assert result["validation_score"] is not None
+        assert result["validation_score"] >= 0.85
         # Experiment moved to VALIDATED.
         r2 = client.get(f"/experiments/{exp_id}")
         assert r2.json()["status"] == "validated"
+
+    def test_graph_validate_survives_llm_failure(self, client, fake_llm, monkeypatch):
+        """A resumed graph validate must not 500 and must fill a non-null score
+        even if the LLM quota is exhausted mid-flow."""
+        from app.catalog import PRIMARY_METRICS, SECONDARY_METRICS
+
+        ctx_id = _create_context(client)
+        rev = client.post(f"/context/{ctx_id}/hypothesis")
+        assert rev.status_code == 200
+        exp_id = rev.json()["experiment_id"]
+
+        class _RaisingStructured:
+            def invoke(self, prompt):
+                raise RuntimeError("simulated quota exhausted")
+
+        class _RaisingLLM:
+            def with_structured_output(self, schema):
+                return _RaisingStructured()
+
+        monkeypatch.setattr("app.agents.llm.get_llm", lambda *a, **k: _RaisingLLM())
+
+        body = {
+            "primary_metric": [
+                {"id": m, "selected": m == "checkout_conversion"} for m in PRIMARY_METRICS
+            ],
+            "secondary_metrics": [
+                {"id": m, "selected": m == "revenue_per_user"} for m in SECONDARY_METRICS
+            ],
+        }
+        r = client.post(f"/experiments/{exp_id}/validate", json=body)
+        assert r.status_code == 200  # graceful degradation, not a 500
+        assert r.json()["validation_score"] is not None
 
 
 # ---------------------------------------------------------------------------
