@@ -1,8 +1,7 @@
 """FastAPI application entry point.
 
-Wires configuration, logging, database initialization, and API routers.
-Additional wiring (routers, scheduler startup) will be added as those
-modules are implemented.
+Wires configuration, logging, database initialization, background simulation
+scheduler, and every API router.
 """
 
 from __future__ import annotations
@@ -13,12 +12,40 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
+from app.api import register_routers
+from app.catalog.status import ExperimentStatus
 from app.config import get_settings
-from app.database import init_db
+from app.database import SessionLocal, init_db
 from app.logging_config import configure_logging, get_logger
+from app.simulation.scheduler import get_scheduler
 from app.utils.errors import AppError
 
 logger = get_logger(__name__)
+
+
+def _resume_running_experiments() -> None:
+    """Re-register scheduler jobs for any experiments still in RUNNING state.
+
+    Called on startup so a process restart doesn't leave running experiments
+    orphaned without a tick job.
+    """
+    scheduler = get_scheduler()
+    session = SessionLocal()
+    try:
+        # Local import avoids ORM registration issues on cold start.
+        from app.models.experiment import Experiment
+
+        running = (
+            session.query(Experiment)
+            .filter(Experiment.status == ExperimentStatus.RUNNING)
+            .all()
+        )
+        for exp in running:
+            scheduler.register(exp.id)
+        if running:
+            logger.info("Resumed %d running experiment(s)", len(running))
+    finally:
+        session.close()
 
 
 @asynccontextmanager
@@ -33,8 +60,18 @@ async def lifespan(app: FastAPI):  # noqa: ARG001 - FastAPI signature
         settings.langsmith_enabled,
     )
     init_db()
+
+    scheduler = get_scheduler()
+    scheduler.start()
+    try:
+        _resume_running_experiments()
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Failed to resume running experiments on startup")
+
     yield
+
     logger.info("Shutting down Experiment Copilot backend")
+    scheduler.shutdown(wait=False)
 
 
 app = FastAPI(
@@ -55,3 +92,6 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:  #
 def health() -> dict:
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+register_routers(app)
