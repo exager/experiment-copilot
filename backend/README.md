@@ -7,7 +7,7 @@ AI-powered A/B experiment decision-support platform. FastAPI + SQLAlchemy + Lang
 ## Prerequisites
 
 - Python **3.12+**
-- (Optional) An OpenAI API key — required only when the AI agents run against a real LLM. Without it, the backend will fall back to a mock LLM (once implemented).
+- (Optional) A Google Gemini API key (`GEMINI_API_KEY`) — required only when the AI agents run against a real LLM. Without it, the tests and evaluation harness use a deterministic fake LLM.
 
 ---
 
@@ -35,6 +35,27 @@ Then open:
 
 The SQLite database is created at `backend/experiment.db` on first startup.
 
+### Creating the database manually
+
+The schema is generated directly from the SQLAlchemy models (no migrations for the
+POC) via `Base.metadata.create_all()`. It runs automatically on server startup, but
+you can also create it explicitly:
+
+    cd backend
+
+    # one-liner (Windows / PowerShell)
+    ..\.venv\Scripts\python.exe -c "from app.database import init_db; init_db(); print('created experiment.db')"
+
+    # Verify the tables were created
+    ..\.venv\Scripts\python.exe -c "from app.database import engine; from sqlalchemy import inspect; print(inspect(engine).get_table_names())"
+
+This creates `backend/experiment.db` with the tables `product_contexts`,
+`experiments`, `metrics`, and `report`. It is idempotent — re-running only creates
+missing tables and never drops existing data.
+
+> Note: `experiment.db` is git-ignored (via `*.db` in `.gitignore`), so the local
+> database file is never committed.
+
 ---
 
 ## Environment variables
@@ -44,12 +65,13 @@ See `.env.example`. Nothing is required to boot the server; the AI keys become r
 | Variable | Purpose | Required |
 |---|---|---|
 | `LOG_LEVEL` | Root log level | No (default `INFO`) |
-| `DATABASE_URL` | SQLAlchemy URL | No (default SQLite file) |
-| `OPENAI_API_KEY` | Real LLM calls | No (mock fallback) |
-| `OPENAI_MODEL` | Model name | No (default `gpt-4o-mini`) |
-| `LANGSMITH_API_KEY` | Enable tracing | No |
-| `LANGSMITH_PROJECT` | Trace project name | No |
-| `LANGSMITH_TRACING` | Explicit tracing flag | No |
+| `DATABASE_URL` | SQLAlchemy URL | No (default `sqlite:///./experiment.db`) |
+| `GEMINI_API_KEY` | Real LLM calls (Google Gemini) | No (fake LLM fallback) |
+| `GEMINI_MODEL` | Model name | No (default `gemini-2.5-flash`) |
+| `LANGCHAIN_API_KEY` | Enable LangSmith tracing | No |
+| `LANGCHAIN_PROJECT` | Trace project name | No (default `experiment-copilot`) |
+| `LANGCHAIN_TRACING_V2` | Explicit tracing flag | No |
+| `LANGCHAIN_ENDPOINT` | LangSmith API endpoint | No |
 | `SIMULATION_INTERVAL_SECONDS` | Simulator tick interval | No (default `5`) |
 
 ---

@@ -8,6 +8,7 @@ own the persistence + rule/statistic invocations.
 from app.services import (
     context_service,
     experiment_service,
+    hypothesis_service,
     metrics_service,
     recommendation_service,
     report_service,
@@ -19,6 +20,7 @@ from app.services import (
 __all__ = [
     "context_service",
     "experiment_service",
+    "hypothesis_service",
     "metrics_service",
     "recommendation_service",
     "report_service",

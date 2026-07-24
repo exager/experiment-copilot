@@ -1,10 +1,14 @@
 """LangGraph assembly: nodes, edges, human-in-the-loop interrupt, checkpointer.
 
 Pipeline:
-    context_agent -> hypothesis_agent -> experiment_design_agent
-    -> validation_agent -> [INTERRUPT: wait for user launch]
-    -> simulation_node -> statistics_node
+    context_agent -> hypothesis_agent -> [INTERRUPT: wait for user launch]
+    -> validation_agent -> simulation_node -> statistics_node
     -> explanation_agent -> report_agent -> END
+
+The graph pauses right after `hypothesis_agent` so the user can review the
+proposed hypothesis and success metrics. Everything after the interrupt
+(validation onward) is wired for a future "launch"/resume phase and does not
+run in the current hypothesis-review flow.
 """
 
 from __future__ import annotations
@@ -14,7 +18,6 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agents import (
     context_agent,
-    experiment_design_agent,
     explanation_agent,
     hypothesis_agent,
     report_agent,
@@ -35,7 +38,6 @@ def build_graph():
 
     graph.add_node("context_agent", context_agent.node)
     graph.add_node("hypothesis_agent", hypothesis_agent.node)
-    graph.add_node("experiment_design_agent", experiment_design_agent.node)
     graph.add_node("validation_agent", validation_agent.node)
     graph.add_node("simulation_node", simulation_node)
     graph.add_node("statistics_node", statistics_node)
@@ -44,8 +46,8 @@ def build_graph():
 
     graph.add_edge(START, "context_agent")
     graph.add_edge("context_agent", "hypothesis_agent")
-    graph.add_edge("hypothesis_agent", "experiment_design_agent")
-    graph.add_edge("experiment_design_agent", "validation_agent")
+    # `experiment_design_agent` removed: pause after hypothesis for user review.
+    graph.add_edge("hypothesis_agent", "validation_agent")
     graph.add_edge("validation_agent", "simulation_node")
     graph.add_edge("simulation_node", "statistics_node")
     graph.add_edge("statistics_node", "explanation_agent")
@@ -53,7 +55,9 @@ def build_graph():
     graph.add_edge("report_agent", END)
 
     checkpointer = MemorySaver()
-    return graph.compile(checkpointer=checkpointer, interrupt_before=["simulation_node"])
+    # Pause right after `hypothesis_agent` so the user can review the proposed
+    # hypothesis + success metrics before anything downstream runs.
+    return graph.compile(checkpointer=checkpointer, interrupt_before=["validation_agent"])
 
 
 _graph = None

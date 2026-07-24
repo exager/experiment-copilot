@@ -1,9 +1,9 @@
-"""Integration tests for the compiled graph: human-in-the-loop pause/resume.
+"""Integration tests for the compiled graph: human-in-the-loop pause.
 
-See the plan's "Testing the human-in-the-loop pause/resume" section: these
-two graph.invoke() calls on the same thread_id stand in for two separate
-API requests ("Generate Experiment" and "Launch") happening at different
-times, using an in-process MemorySaver checkpointer.
+The graph runs `context_agent -> hypothesis_agent` and then pauses at the
+interrupt before `validation_agent`, so the user can review the proposed
+hypothesis + success metrics before launching. Everything after the interrupt
+(validation onward) is deferred to a future launch/resume phase.
 """
 
 from __future__ import annotations
@@ -20,29 +20,23 @@ INITIAL_STATE = {
 }
 
 
-def test_graph_pauses_before_simulation_then_resumes_to_report(fake_llm):
+def test_graph_pauses_after_hypothesis(fake_llm):
     graph = build_graph()
     config = {"configurable": {"thread_id": "test-thread-1"}}
 
     result = graph.invoke(INITIAL_STATE, config)
     snapshot = graph.get_state(config)
 
-    # The key check: a bug that silently removes the interrupt would still
-    # produce a "passing-looking" final report — assert it's paused, not done.
-    assert snapshot.next == ("simulation_node",)
+    # The key check: a bug that silently removes the interrupt would keep
+    # running past hypothesis — assert it's paused right after hypothesis.
+    assert snapshot.next == ("validation_agent",)
+    assert result.get("context_understanding") is not None
     assert result.get("hypothesis") is not None
-    assert result.get("configuration") is not None
-    assert result.get("validation") is not None
+    # Nothing downstream of the interrupt should have run yet.
+    assert result.get("configuration") is None
+    assert result.get("validation") is None
     assert result.get("metrics") is None
     assert result.get("report") is None
-
-    resumed = graph.invoke(None, config)
-    final_snapshot = graph.get_state(config)
-
-    assert final_snapshot.next == ()
-    assert resumed.get("metrics") is not None
-    assert resumed.get("statistics") is not None
-    assert resumed.get("report") is not None
 
 
 def test_two_threads_do_not_leak_state(fake_llm):
@@ -53,7 +47,6 @@ def test_two_threads_do_not_leak_state(fake_llm):
     graph.invoke(INITIAL_STATE, config_a)
     graph.invoke(INITIAL_STATE, config_b)
 
-    graph.invoke(None, config_a)  # resume only thread A
-
-    assert graph.get_state(config_a).next == ()
-    assert graph.get_state(config_b).next == ("simulation_node",)
+    # Both threads independently pause at the same interrupt point.
+    assert graph.get_state(config_a).next == ("validation_agent",)
+    assert graph.get_state(config_b).next == ("validation_agent",)

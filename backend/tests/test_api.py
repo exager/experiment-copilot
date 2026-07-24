@@ -209,6 +209,45 @@ class TestPostContext:
 
 
 # ---------------------------------------------------------------------------
+# /context/{id}/hypothesis  (run agents -> pause -> review)
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateHypothesis:
+    def _selected(self, options: list[dict]) -> set[str]:
+        return {opt["id"] for opt in options if opt["selected"]}
+
+    def test_happy_path(self, client, fake_llm):
+        ctx_id = _create_context(client)
+        r = client.post(f"/context/{ctx_id}/hypothesis")
+        assert r.status_code == 200, r.text
+        body = r.json()
+
+        assert body["thread_id"].startswith(f"ctx-{ctx_id}-")
+        assert body["experiment_name"]
+        assert body["hypothesis"]
+        # problem_statement comes from the context understanding card.
+        assert body["problem_statement"] == "Users abandon checkout during payment"
+
+        # Each role returns the full catalog list with the AI's picks selected.
+        assert self._selected(body["primary_metric"]) == {"checkout_conversion"}
+        assert all(
+            opt["id"] != "checkout_conversion" or opt["selected"]
+            for opt in body["primary_metric"]
+        )
+        assert self._selected(body["secondary_metrics"]) == {"average_order_value"}
+        assert self._selected(body["guardrail_metrics"]) == {"bounce_rate"}
+
+        # Options carry labels and cover more than just the selected metric.
+        assert all(opt["label"] for opt in body["primary_metric"])
+        assert len(body["primary_metric"]) > 1
+
+    def test_missing_context_returns_404(self, client, fake_llm):
+        r = client.post("/context/9999/hypothesis")
+        assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # /experiments  (create + get + launch + stop)
 # ---------------------------------------------------------------------------
 
