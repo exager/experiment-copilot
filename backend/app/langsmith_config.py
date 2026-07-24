@@ -52,11 +52,17 @@ def init_langsmith() -> bool:
         _INITIALIZED = True
 
     tracing_enabled = os.environ.get("LANGCHAIN_TRACING_V2", "true").lower() != "false"
-    os.environ["LANGCHAIN_TRACING_V2"] = "true" if tracing_enabled else "false"
+    api_key_present = bool(os.environ.get("LANGCHAIN_API_KEY"))
+
+    # Only actually turn on auto-tracing when a key is present. Otherwise
+    # LangChain tries (and fails) to ingest every run, spamming 401 errors in
+    # tests and local dev. Tracing flips on automatically once a key is added.
+    active = tracing_enabled and api_key_present
+    os.environ["LANGCHAIN_TRACING_V2"] = "true" if active else "false"
     os.environ.setdefault("LANGCHAIN_PROJECT", _DEFAULT_PROJECT)
     os.environ.setdefault("LANGCHAIN_ENDPOINT", _DEFAULT_ENDPOINT)
 
-    return tracing_enabled and bool(os.environ.get("LANGCHAIN_API_KEY"))
+    return active
 
 
 def tracing_status() -> dict[str, Any]:

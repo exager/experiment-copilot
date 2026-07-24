@@ -25,7 +25,10 @@ from app.langsmith_config import init_langsmith
 # absent.
 init_langsmith()
 
-DEFAULT_MODEL = "gemini-2.0-flash"
+# gemini-2.0-flash was retired (generateContent returns 404). Use the current
+# stable fast model; override per-call via get_llm(model=...) or the
+# GEMINI_MODEL env var.
+DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 NodeFn = Callable[[dict], dict]
 
