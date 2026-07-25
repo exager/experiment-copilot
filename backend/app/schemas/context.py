@@ -6,6 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.catalog import Feature
+
 
 class ProductContextCreate(BaseModel):
     """Request body for `POST /context`."""
@@ -13,7 +15,9 @@ class ProductContextCreate(BaseModel):
     business_goal: str = Field(..., min_length=1, max_length=2000)
     website: str | None = Field(default=None, max_length=512)
     current_flow: str | None = Field(default=None, max_length=4000)
-    feature: str | None = Field(default=None, max_length=256)
+    # `feature` is constrained to the pre-set catalog so the LLM downstream
+    # only ever sees supported page types.
+    feature: Feature | None = Field(default=None)
     pain_point: str | None = Field(default=None, max_length=4000)
 
 

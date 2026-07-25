@@ -1,0 +1,91 @@
+{
+  "rules": [
+    {
+      "id": "rollback_on_guardrail_regression",
+      "name": "Rollback if a guardrail metric regressed significantly",
+      "priority": 100,
+      "when": {
+        "op": "and",
+        "conditions": [
+          { "op": "is_true", "field": "guardrail.regression" },
+          { "op": "gte", "field": "statistics.confidence", "value": 0.9 }
+        ]
+      },
+      "on_match": {
+        "decision": "rollback",
+        "message": "Variant caused a statistically-significant guardrail regression."
+      },
+      "on_mismatch": { "decision": null }
+    },
+    {
+      "id": "scale_when_significant_positive",
+      "name": "Scale when variant wins with high confidence and material lift",
+      "priority": 90,
+      "when": {
+        "op": "and",
+        "conditions": [
+          { "op": "eq", "field": "statistics.winner", "value": "variant" },
+          { "op": "gte", "field": "statistics.confidence", "value": 0.95 },
+          { "op": "gte", "field": "statistics.conversion_lift", "value": 0.05 },
+          { "op": "is_false", "field": "guardrail.regression" }
+        ]
+      },
+      "on_match": {
+        "decision": "scale",
+        "message": "Variant beats control significantly (>=5% lift, >=95% confidence) with no guardrail regression."
+      },
+      "on_mismatch": { "decision": null }
+    },
+    {
+      "id": "stop_when_control_wins",
+      "name": "Stop the experiment if control is significantly better",
+      "priority": 85,
+      "when": {
+        "op": "and",
+        "conditions": [
+          { "op": "eq", "field": "statistics.winner", "value": "control" },
+          { "op": "gte", "field": "statistics.confidence", "value": 0.95 }
+        ]
+      },
+      "on_match": {
+        "decision": "stop",
+        "message": "Control significantly outperforms variant; abandon the change."
+      },
+      "on_mismatch": { "decision": null }
+    },
+    {
+      "id": "stop_when_sample_exhausted",
+      "name": "Stop the experiment if it ran to full sample size without significance",
+      "priority": 60,
+      "when": {
+        "op": "and",
+        "conditions": [
+          { "op": "gte", "field": "progress.sample_ratio", "value": 1.0 },
+          { "op": "lt", "field": "statistics.confidence", "value": 0.9 }
+        ]
+      },
+      "on_match": {
+        "decision": "stop",
+        "message": "Sample size reached without reaching significance; inconclusive."
+      },
+      "on_mismatch": { "decision": null }
+    },
+    {
+      "id": "continue_default",
+      "name": "Continue collecting data while below decision thresholds",
+      "priority": 10,
+      "when": {
+        "op": "or",
+        "conditions": [
+          { "op": "lt", "field": "statistics.confidence", "value": 0.95 },
+          { "op": "lt", "field": "statistics.conversion_lift", "value": 0.05 }
+        ]
+      },
+      "on_match": {
+        "decision": "continue",
+        "message": "Insufficient evidence for a terminal decision; keep the experiment running."
+      },
+      "on_mismatch": { "decision": null }
+    }
+  ]
+}
