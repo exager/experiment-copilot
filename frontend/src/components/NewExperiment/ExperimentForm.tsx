@@ -14,10 +14,18 @@ import {
 
 // ============ VALIDATION ============
 
+type ValidationRule = {
+  required: string
+  pattern?: RegExp
+  patternMsg?: string
+  minLength?: number
+  minLengthMsg?: string
+}
+
 const validateForm = (formData: ExperimentFormData): Record<string, string> => {
   const errors: Record<string, string> = {}
 
-  for (const [field, rules] of Object.entries(VALIDATION_RULES)) {
+  for (const [field, rules] of Object.entries(VALIDATION_RULES) as [string, ValidationRule][]) {
     const value = formData[field as keyof ExperimentFormData].trim()
 
     if (!value) {
