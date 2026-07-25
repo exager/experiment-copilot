@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Experiment Copilot — Backend Deep Dive</title>
+<style>
+  :root {
+    --fg: #1a1d24;
+    --muted: #5b6472;
+    --accent: #2b5cff;
+    --accent-soft: #eaf0ff;
+    --border: #d8dee8;
+    --code-bg: #f5f7fb;
+    --code-fg: #223;
+    --warn-bg: #fff7e6;
+    --warn-border: #f0c36d;
+    --why-bg: #eefaf1;
+    --why-border: #7dcf9a;
+    --page-max: 900px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    line-height: 1.6;
+    margin: 0;
+    background: #fff;
+    font-size: 15px;
+  }
+  main { max-width: var(--page-max); margin: 0 auto; padding: 48px 32px 80px; }
+  h1, h2, h3, h4 { line-height: 1.25; font-weight: 700; }
+  h1 { font-size: 2.1rem; margin: 0 0 4px; }
+  h2 {
+    font-size: 1.55rem;
+    margin: 56px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent);
+  }
+  h3 { font-size: 1.2rem; margin: 32px 0 8px; color: #14203a; }
+  h4 { font-size: 1.02rem; margin: 20px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  p { margin: 10px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  code {
+    font-family: "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: .86em;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: .82rem;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: .88rem; }
+  th, td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); font-weight: 600; }
+  tr:nth-child(even) td { background: #fafbfe; }
+  ul, ol { margin: 10px 0; padding-left: 24px; }
+  li { margin: 4px 0; }
+  blockquote { margin: 12px 0; padding: 2px 16px; border-left: 4px solid var(--border); color: var(--muted); }
+
+  .subtitle { color: var(--muted); font-size: 1.05rem; margin: 0 0 18px; }
+  .meta-line { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+
+  .callout { border-radius: 8px; padding: 12px 16px; margin: 16px 0; border: 1px solid; }
+  .callout p:first-child { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  .why { background: var(--why-bg); border-color: var(--why-border); }
+  .why .tag { color: #1c7a45; }
+  .warn { background: var(--warn-bg); border-color: var(--warn-border); }
+  .warn .tag { color: #9a6a00; }
+  .tag { font-weight: 700; text-transform: uppercase; font-size: .72rem; letter-spacing: .06em; display: block; margin-bottom: 4px; }
+
+  .print-note {
+    background: var(--accent-soft);
+    border: 1px dashed var(--accent);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: .9rem;
+    margin: 20px 0 8px;
+  }
+
+  .toc { background: #fbfcfe; border: 1px solid var(--border); border-radius: 10px; padding: 18px 26px; margin: 28px 0; }
+  .toc h2 { border: none; margin: 0 0 8px; font-size: 1.2rem; }
+  .toc ol { columns: 2; column-gap: 36px; padding-left: 20px; }
+  .toc a { color: var(--fg); }
+
+  .mermaid { margin: 18px 0; text-align: center; }
+  .lead { font-size: 1.05rem; }
+  .pill { display: inline-block; background: var(--accent-soft); color: var(--accent); border-radius: 20px; padding: 1px 10px; font-size: .78rem; font-weight: 600; margin-right: 4px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+  footer { max-width: var(--page-max); margin: 0 auto; padding: 24px 32px 60px; color: var(--muted); font-size: .82rem; border-top: 1px solid var(--border); }
+
+  @media print {
+    body { font-size: 11.5px; }
+    main { max-width: none; padding: 0 8px; }
+    h2 { page-break-before: always; page-break-after: avoid; }
+    h1 + .subtitle + .meta-line + .print-note + .toc + h2 { page-break-before: avoid; }
+    #cover h2, .toc + h2, #s1 > h2 { page-break-before: avoid; }
+    h3, h4 { page-break-after: avoid; }
+    pre, table, .callout, .mermaid, blockquote { page-break-inside: avoid; }
+    .print-note { display: none; }
+    .toc ol { columns: 2; }
+    a { color: var(--fg); }
+    thead { display: table-header-group; }
+  }
+</style>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', flowchart: { htmlLabels: true, curve: 'basis' }, securityLevel: 'loose' });
+</script>
+</head>
+<body>
+<main>
+
+<section id="cover">
+  <h1>Experiment Copilot — Backend Deep Dive</h1>
+  <p class="subtitle">An engineer's guide to how the AI-powered A/B experiment decision-support backend works, and why it is built the way it is.</p>
+  <p class="meta-line">Stack: FastAPI &middot; SQLAlchemy + SQLite &middot; LangGraph + LangChain &middot; Google Gemini &middot; SciPy &middot; APScheduler &middot; LangSmith</p>
+  <p class="meta-line">Scope: everything under <code>backend/app/</code>. Audience: engineers and technical reviewers.</p>
+
+  <div class="print-note">
+    <strong>Save this as a PDF:</strong> open this file in Chrome or Edge, press <code>Ctrl</code>+<code>P</code>,
+    choose <em>Destination &rarr; Save as PDF</em>, set margins to <em>Default</em> and enable
+    <em>Background graphics</em> so the diagrams and colored callouts render. (This note is hidden in the printout.)
+  </div>
+</section>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#s1">Executive summary</a></li>
+    <li><a href="#s2">High-level architecture</a></li>
+    <li><a href="#s3">Runtime bootstrap &amp; lifespan</a></li>
+    <li><a href="#s4">Configuration &amp; environment</a></li>
+    <li><a href="#s5">Persistence layer &amp; status lifecycle</a></li>
+    <li><a href="#s6">Contracts: schemas &amp; the catalog</a></li>
+    <li><a href="#s7">The LangGraph pipeline</a></li>
+    <li><a href="#s8">Agents, prompts &amp; the LLM factory</a></li>
+    <li><a href="#s9">Deterministic decision engines</a></li>
+    <li><a href="#s10">Human-in-the-loop flow</a></li>
+    <li><a href="#s11">Resilience &amp; error handling</a></li>
+    <li><a href="#s12">Observability &amp; LangSmith</a></li>
+    <li><a href="#s13">Evaluation harness</a></li>
+    <li><a href="#s14">API reference</a></li>
+    <li><a href="#s15">Setup, running &amp; troubleshooting</a></li>
+    <li><a href="#s16">Appendix: file map</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<section id="s1">
+  <h2>1. Executive summary</h2>
+  <p class="lead">
+    Experiment Copilot turns a product manager's rough idea into a fully reasoned A/B experiment
+    decision. A PM describes a business goal and pain point; the system proposes a testable
+    hypothesis and success metrics, designs a launchable experiment configuration, validates it
+    against a rule book, simulates traffic, runs the statistics, and writes an executive report with
+    a scale / continue / stop / rollback recommendation.
+  </p>
+
+  <h3>The end-to-end journey</h3>
+  <p>
+    A single experiment moves through seven logical stages, orchestrated by a LangGraph state machine
+    with two human review pauses:
+  </p>
+  <pre><code>context  ->  hypothesis  ->  [PAUSE: review metrics]  ->  design  ->  validation
+        ->  [PAUSE: review &amp; launch]  ->  simulation  ->  statistics  ->  explanation  ->  report</code></pre>
+
+  <div class="callout why">
+    <span class="tag">Core design thesis</span>
+    <p><strong>The LLM narrates; deterministic Python decides.</strong> Every consequential decision
+    &mdash; whether a config is valid, who "wins" the test, what the recommendation is &mdash; is made by
+    pure, testable code: a JSON-driven rule engine and a SciPy statistics engine. The language model's
+    job is strictly to <em>understand fuzzy input</em> and <em>explain the outcome in plain English</em>.
+    It never re-decides pass/fail. This keeps the product trustworthy, reproducible, and cheap to test,
+    while still feeling conversational.</p>
+  </div>
+
+  <h3>Why this matters (design pillars)</h3>
+  <table>
+    <thead><tr><th>Pillar</th><th>How it shows up in the code</th></tr></thead>
+    <tbody>
+      <tr><td>Determinism where it counts</td><td><code>app/rules/</code> and <code>app/statistics/</code> are pure functions; the same inputs always yield the same decision.</td></tr>
+      <tr><td>Single source of truth</td><td><code>app/catalog/</code> defines every metric, audience, and traffic split. Schemas, prompts, simulator, and rules all read from it.</td></tr>
+      <tr><td>Human-in-the-loop</td><td>LangGraph <code>interrupt_before</code> pauses let the PM edit metrics and approve launch before anything runs.</td></tr>
+      <tr><td>Graceful degradation</td><td>If Gemini is down or rate-limited, the pipeline still produces a deterministic score and result instead of a 500.</td></tr>
+      <tr><td>Observability</td><td>LangSmith auto-traces every LLM call and graph node once a key is set; structured logging everywhere.</td></tr>
+      <tr><td>Testability without cost</td><td>A deterministic fake LLM drives the whole test + evaluation suite; no API key or network required.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<section id="s2">
+  <h2>2. High-level architecture</h2>
+  <p>
+    The backend is a layered FastAPI application. Requests enter through thin routers, which delegate
+    to a services layer that owns all persistence and orchestration. The AI pipeline (LangGraph +
+    agents) and the deterministic engines (rules, statistics, simulation) sit beside the services and
+    share the same models and catalog.
+  </p>
+
+  <div class="mermaid">
+flowchart TB
+  Client["Frontend / API client"]
+  subgraph api [API layer  -  app/api]
+    Routers["context &middot; experiment &middot; validation &middot; metrics &middot; report &middot; catalog routers"]
+  end
+  subgraph svc [Services layer  -  app/services]
+    Services["context &middot; experiment &middot; hypothesis &middot; validation &middot; metrics &middot; statistics &middot; recommendation &middot; simulation &middot; report"]
+  end
+  subgraph ai [AI pipeline  -  app/graph + app/agents]
+    Graph["LangGraph state machine"]
+    Agents["6 agent nodes (Gemini)"]
+    Prompts["app/prompts/*.md"]
+  end
+  subgraph det [Deterministic engines]
+    Rules["Rule engine  -  app/rules"]
+    Stats["Statistics  -  app/statistics"]
+    Sim["Simulation + scheduler  -  app/simulation"]
+  end
+  subgraph data [Data + contracts]
+    Models["ORM models  -  app/models"]
+    Schemas["Pydantic schemas  -  app/schemas"]
+    Catalog["Catalog  -  app/catalog"]
+    DB[("SQLite  -  experiment.db")]
+  end
+
+  Client --> Routers --> Services
+  Services --> Graph
+  Graph --> Agents --> Prompts
+  Agents --> Rules
+  Graph --> Sim
+  Services --> Rules
+  Services --> Stats
+  Sim --> Stats
+  Sim --> Rules
+  Services --> Models --> DB
+  Agents --> Models
+  Schemas --> Catalog
+  Rules --> Schemas
+  Agents --> Catalog
+  </div>
+
+  <h3>What each layer is responsible for</h3>
+  <ul>
+    <li><strong>API</strong> (<code>app/api</code>): request/response shapes, HTTP status codes, dependency injection of a DB session and the resolved experiment. No business logic.</li>
+    <li><strong>Services</strong> (<code>app/services</code>): every persistence operation and lifecycle transition. Functions take a <code>Session</code> as the first argument; routes and background jobs call them.</li>
+    <li><strong>AI pipeline</strong> (<code>app/graph</code>, <code>app/agents</code>, <code>app/prompts</code>): the LangGraph workflow, six agent node functions, and their Markdown prompts.</li>
+    <li><strong>Deterministic engines</strong> (<code>app/rules</code>, <code>app/statistics</code>, <code>app/simulation</code>): the trustworthy core &mdash; rule evaluation, the two-proportion z-test, and the synthetic traffic generator.</li>
+    <li><strong>Data &amp; contracts</strong> (<code>app/models</code>, <code>app/schemas</code>, <code>app/catalog</code>): SQLAlchemy tables, Pydantic validation, and the shared enum/spec catalog.</li>
+  </ul>
+
+  <div class="callout why">
+    <span class="tag">Why a services layer at all?</span>
+    <p>Both the API routes <em>and</em> the graph's agent nodes need to persist to the same tables with
+    the same rules (e.g. "editing a hypothesis invalidates a prior validation"). Centralizing that in
+    services means there is exactly one place a state transition can happen, so the manual API path and
+    the AI graph path can never drift apart.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s3">
+  <h2>3. Runtime bootstrap &amp; lifespan</h2>
+  <p>
+    <code>app/main.py</code> is the FastAPI entry point. It uses an async <code>lifespan</code> context
+    manager so startup and shutdown are explicit and ordered.
+  </p>
+
+  <h3>Startup sequence</h3>
+  <ol>
+    <li><code>configure_logging()</code> &mdash; installs a single stdout handler and silences chatty third-party loggers.</li>
+    <li><code>init_db()</code> &mdash; imports the models package (registering every ORM class on <code>Base.metadata</code>) and runs <code>create_all()</code>, creating <code>experiment.db</code> on first boot.</li>
+    <li><code>get_scheduler().start()</code> &mdash; starts the APScheduler background scheduler.</li>
+    <li><code>_resume_running_experiments()</code> &mdash; finds any experiment still in <code>RUNNING</code> state and re-registers a per-tick simulation job for it.</li>
+  </ol>
+
+  <div class="callout why">
+    <span class="tag">Why resume running experiments on startup?</span>
+    <p>Simulation jobs live only in the in-process scheduler, not the database. If the server restarts
+    while an experiment is <code>RUNNING</code>, its tick job would be lost and the metrics series would
+    silently freeze. Re-registering on startup makes a restart transparent &mdash; the DB is the source of
+    truth for "what should be ticking".</p>
+  </div>
+
+  <h3>Middleware &amp; error handling</h3>
+  <ul>
+    <li><strong>CORS</strong>: wide-open by default for local dev; note that the CORS spec forbids <code>allow_credentials=True</code> with a wildcard origin, so the app flips credentials off when origins is <code>["*"]</code>.</li>
+    <li><strong>TrustedHostMiddleware</strong>: restricts <code>Host</code> headers via <code>ALLOWED_HOSTS</code>.</li>
+    <li><strong>AppError handler</strong>: a single exception handler converts any <code>AppError</code> subclass into a consistent JSON body (<code>{error, message, details}</code>) with the right status code.</li>
+    <li><strong><code>GET /health</code></strong>: trivial liveness probe returning <code>{"status": "ok"}</code>.</li>
+  </ul>
+
+  <p>All routers are then attached via <code>register_routers(app)</code>.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s4">
+  <h2>4. Configuration &amp; environment</h2>
+  <p>
+    <code>app/config.py</code> has two jobs. First, importing it loads <code>backend/.env</code> into
+    <code>os.environ</code> exactly once (idempotent, and safe when the file or <code>python-dotenv</code>
+    is missing). Second, it exposes a cached <code>pydantic-settings</code> <code>Settings</code> object.
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why load .env on import?</span>
+    <p>LangChain reads the <code>LANGCHAIN_*</code> vars directly from the environment for automatic
+    tracing, and the Gemini client reads <code>GEMINI_API_KEY</code>. By loading <code>.env</code> the
+    moment <code>app.config</code> is imported (and importing it first inside <code>app/agents/llm.py</code>),
+    every code path &mdash; server, tests, eval CLI &mdash; boots with a populated environment without each
+    entry point having to remember to do it.</p>
+  </div>
+
+  <h3>Settings and derived flags</h3>
+  <p>
+    Settings map environment variables through aliases. Two computed properties gate optional behavior:
+    <code>llm_enabled</code> is true only when <code>GEMINI_API_KEY</code> is set, and
+    <code>langsmith_enabled</code> is true only when <code>LANGCHAIN_API_KEY</code> is set. A field
+    validator lets list settings (<code>CORS_ORIGINS</code>, <code>ALLOWED_HOSTS</code>) accept either a
+    JSON array or a comma-separated string.
+  </p>
+
+  <h4>Environment variables</h4>
+  <table>
+    <thead><tr><th>Variable</th><th>Purpose</th><th>Default</th></tr></thead>
+    <tbody>
+      <tr><td><code>LOG_LEVEL</code></td><td>Root log level</td><td><code>INFO</code></td></tr>
+      <tr><td><code>DATABASE_URL</code></td><td>SQLAlchemy URL</td><td><code>sqlite:///./experiment.db</code></td></tr>
+      <tr><td><code>GEMINI_API_KEY</code></td><td>Enables real Gemini calls</td><td>none (fake-LLM fallback in tests)</td></tr>
+      <tr><td><code>GEMINI_MODEL</code></td><td>Gemini model name</td><td><code>gemini-2.5-flash</code></td></tr>
+      <tr><td><code>LANGCHAIN_API_KEY</code></td><td>Enables LangSmith tracing</td><td>none</td></tr>
+      <tr><td><code>LANGCHAIN_PROJECT</code></td><td>Trace project name</td><td><code>experiment-copilot</code></td></tr>
+      <tr><td><code>LANGCHAIN_TRACING_V2</code></td><td>Explicit tracing on/off</td><td><code>false</code> unless key present</td></tr>
+      <tr><td><code>SIMULATION_INTERVAL_SECONDS</code></td><td>Simulator tick interval</td><td><code>5</code></td></tr>
+      <tr><td><code>CORS_ORIGINS</code> / <code>ALLOWED_HOSTS</code></td><td>CORS / trusted hosts</td><td><code>["*"]</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <span class="tag">Security note</span>
+    <p>Nothing is required to boot the server &mdash; the AI keys only matter once the graph runs against a
+    real LLM. Keep real secrets in <code>backend/.env</code> (git-ignored) and never commit them; the
+    tracked template is <code>.env.example</code>. The <code>gemini-2.5-flash</code> default can be
+    overridden with <code>GEMINI_MODEL</code> if a key only has access to a different model
+    (e.g. <code>gemini-flash-latest</code>).</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s5">
+  <h2>5. Persistence layer &amp; status lifecycle</h2>
+
+  <h3>Engine &amp; sessions</h3>
+  <p>
+    <code>app/database/session.py</code> builds a module-level <code>engine</code> and
+    <code>SessionLocal</code> factory from <code>DATABASE_URL</code>. For SQLite it passes
+    <code>check_same_thread=False</code> so the APScheduler background threads and FastAPI request
+    handlers can share connections. <code>configure_database(url)</code> can rebuild both against a new
+    URL &mdash; tests use this to attach an in-memory database. <code>get_db()</code> is the FastAPI
+    dependency that yields a session and always closes it.
+  </p>
+  <p>
+    The declarative <code>Base</code> lives in its own module (<code>app/database/base.py</code>) so ORM
+    models can import it without an import cycle back to <code>session.py</code>.
+  </p>
+
+  <h3>The four tables</h3>
+  <table>
+    <thead><tr><th>Model</th><th>Table</th><th>Key columns</th></tr></thead>
+    <tbody>
+      <tr><td><code>ProductContext</code></td><td><code>product_contexts</code></td><td>business_goal, website, current_flow, feature, pain_point</td></tr>
+      <tr><td><code>Experiment</code></td><td><code>experiments</code></td><td>context_id (FK), hypothesis (JSON), configuration (JSON), validation (JSON), status (enum), timestamps</td></tr>
+      <tr><td><code>Metrics</code></td><td><code>metrics</code></td><td>cumulative per-arm counts, guardrails (JSON), derived stats, recommendation snapshot, timestamp</td></tr>
+      <tr><td><code>Report</code></td><td><code>reports</code></td><td>summary, recommendation, business_impact, next_steps (JSON), details (JSON)</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Relationships: a context has many experiments; an experiment has many metrics rows (one per tick,
+    ordered by timestamp) and exactly one report. Cascades delete children with the parent. The
+    <code>metrics</code> table has a composite index on <code>(experiment_id, timestamp)</code> for fast
+    dashboard reads.
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why store hypothesis/configuration/validation as JSON blobs?</span>
+    <p>These shapes are AI-generated and still evolving. Persisting them as JSON columns lets the agent
+    output and Pydantic schemas change without a database migration. The catalog + Pydantic layer still
+    guarantees the <em>contents</em> are valid; the DB just stores the validated blob.</p>
+  </div>
+
+  <h3>Status lifecycle</h3>
+  <p>
+    <code>ExperimentStatus</code> (a <code>StrEnum</code> in <code>app/catalog/status.py</code>, kept out
+    of the ORM so graph/services/prompts can reference it freely) drives the whole lifecycle. All
+    transitions live in <code>experiment_service</code>, which refuses illegal moves with a
+    <code>ConflictError</code> (HTTP 409).
+  </p>
+
+  <div class="mermaid">
+stateDiagram-v2
+  [*] --> draft: create_draft
+  draft --> validated: mark_validated
+  validated --> draft: edit hypothesis/config
+  validated --> running: launch
+  running --> completed: sample size reached
+  running --> stopped: manual stop
+  validated --> stopped: manual stop
+  completed --> [*]
+  stopped --> [*]
+  </div>
+
+  <div class="callout why">
+    <span class="tag">Why does editing revert VALIDATED to DRAFT?</span>
+    <p><code>update_hypothesis</code> / <code>update_configuration</code> clear <code>validation</code> and
+    drop the status back to <code>DRAFT</code>. A validation result only describes the config it was run
+    against; the moment the PM changes a metric or a split, that verdict is stale, so the system forces a
+    re-validation before launch.</p>
+  </div>
+
+  <h3>No migrations (by design, for the POC)</h3>
+  <p>
+    The schema is created directly from the models via <code>Base.metadata.create_all()</code> on
+    startup &mdash; idempotent, creating only missing tables, never dropping data. This is a deliberate
+    POC trade-off: fast iteration over migration ceremony. A production system would introduce Alembic.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s6">
+  <h2>6. Contracts: schemas &amp; the catalog</h2>
+
+  <h3>The catalog is the single source of truth</h3>
+  <p>
+    <code>app/catalog/</code> defines every value the platform recognizes: metrics, audiences, traffic
+    splits, durations, confidence levels, sample sizes, and statuses. Each <code>MetricSpec</code>
+    carries rich metadata &mdash; kind (ratio / currency / duration / count), direction
+    (higher/lower is better), which roles it may play (primary / secondary / guardrail), a baseline
+    value, and a unit.
+  </p>
+
+  <table>
+    <thead><tr><th>Consumer</th><th>What it reads from the catalog</th></tr></thead>
+    <tbody>
+      <tr><td>Pydantic schemas</td><td>Validate that agent-emitted metric ids exist and are used in an allowed role.</td></tr>
+      <tr><td>Prompts</td><td><code>catalog_summary()</code> is injected so the LLM can only choose real ids.</td></tr>
+      <tr><td>Simulation engine</td><td>Uses <code>kind</code> + <code>baseline</code> to pick a distribution per metric.</td></tr>
+      <tr><td>Statistics engine</td><td>Uses <code>kind</code> to choose the right test.</td></tr>
+      <tr><td>Recommendation engine</td><td>Uses <code>direction</code> to define what "regression" means.</td></tr>
+      <tr><td><code>GET /catalog</code></td><td>Serves the whole thing so the frontend can render dropdowns without hard-coding.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout why">
+    <span class="tag">Why centralize the catalog?</span>
+    <p>An LLM left to its own devices emits free-form strings like "Bounce Rate". Downstream code needs
+    stable ids like <code>bounce_rate</code>. By injecting the catalog into the prompt <em>and</em>
+    validating output against it, the model is boxed into emitting exactly the ids the simulator,
+    statistics, and rules understand. One list changes behavior everywhere consistently.</p>
+  </div>
+
+  <h3>Pydantic schemas enforce the contract</h3>
+  <p>
+    <code>app/schemas/experiment.py</code> is where the catalog is enforced. <code>Hypothesis</code>
+    validates that <code>primary_metric</code> is primary-eligible, secondary/guardrail ids are valid for
+    their roles, and the primary isn't duplicated as a secondary. <code>ExperimentConfiguration</code>
+    constrains <code>audience</code> to the <code>Audience</code> enum and derives the concrete
+    <code>traffic_split</code> fractions automatically from the chosen <code>traffic_split_option</code>.
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why derive traffic_split from an option?</span>
+    <p>A free-form pair of floats can be inconsistent (e.g. 0.6 / 0.5). By choosing a named preset
+    (<code>50_50</code>, <code>90_10</code>, &hellip;) and computing the fractions in a model validator, the
+    split is always internally consistent and always sums to 1.0 &mdash; which is exactly what the
+    validation rule engine later checks.</p>
+  </div>
+
+  <p>
+    Other schema groups: <code>validation.py</code> (<code>RuleResult</code>, <code>ValidationResult</code>
+    with optional AI-enriched <code>validation_score</code>/<code>warnings</code>/<code>suggestions</code>),
+    <code>metrics.py</code> (<code>StatisticsOut</code>, <code>RecommendationOut</code>,
+    <code>MetricsSnapshot</code> for the dashboard), <code>hypothesis_review.py</code> (the interrupt
+    payloads, covered in section 10), and <code>agent_outputs.py</code> (LLM-only "narration" schemas
+    that don't map to DB fields).
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+  <h2>7. The LangGraph pipeline</h2>
+  <p>
+    The heart of the system is a LangGraph <code>StateGraph</code> assembled in
+    <code>app/graph/builder.py</code>. It chains eight nodes, keeps state in a shared
+    <code>TypedDict</code>, checkpoints to memory, and pauses at two human-review points.
+  </p>
+
+  <div class="mermaid">
+flowchart TD
+  START([START]) --> ctx["context_agent"]
+  ctx --> hyp["hypothesis_agent"]
+  hyp -. "INTERRUPT #1<br/>review metrics" .-> design["experiment_design_agent"]
+  design --> val["validation_agent"]
+  val -. "INTERRUPT #2<br/>review &amp; launch" .-> sim["simulation_node"]
+  sim --> stats["statistics_node"]
+  stats --> expl["explanation_agent"]
+  expl --> rep["report_agent"]
+  rep --> ENDN([END])
+
+  ctx:::llm
+  hyp:::llm
+  design:::llm
+  val:::llm
+  expl:::llm
+  rep:::llm
+  sim:::det
+  stats:::det
+  classDef llm fill:#eaf0ff,stroke:#2b5cff;
+  classDef det fill:#eefaf1,stroke:#7dcf9a;
+  </div>
+  <p style="text-align:center;font-size:.82rem;color:#5b6472;margin-top:-6px">
+    Blue = LLM agent nodes &middot; Green = deterministic nodes. Dotted edges are <code>interrupt_before</code> pauses.
+  </p>
+
+  <h3>Shared state</h3>
+  <p>
+    <code>app/graph/state.py</code> defines <code>ExperimentState</code>, a <code>total=False</code>
+    TypedDict. Input fields (<code>business_goal</code>, <code>website</code>, &hellip;) mirror the product
+    context. <code>experiment_id</code> / <code>context_id</code> are present only on the persisted,
+    API-driven path (absent when unit tests call a node directly). Each node then fills in exactly one
+    output key, in pipeline order: <code>context_understanding</code>, <code>hypothesis</code>,
+    <code>configuration</code>, <code>validation</code>, <code>metrics</code>, <code>statistics</code>,
+    <code>recommendation</code>, <code>report</code>, plus an <code>errors</code> list.
+  </p>
+
+  <h3>Checkpointing and the two interrupts</h3>
+  <p>
+    The graph is compiled with a <code>MemorySaver</code> checkpointer and
+    <code>interrupt_before=["experiment_design_agent", "simulation_node"]</code>. That produces two
+    pauses:
+  </p>
+  <ol>
+    <li><strong>After <code>hypothesis_agent</code></strong> (before design): the PM reviews and edits the proposed success metrics.</li>
+    <li><strong>After <code>validation_agent</code></strong> (before simulation): the PM reviews the validated configuration and explicitly launches.</li>
+  </ol>
+
+  <div class="callout why">
+    <span class="tag">Why a checkpointer + thread_id?</span>
+    <p>Human-in-the-loop means the graph must stop, hand control back to the API, and later resume from
+    the exact same spot &mdash; possibly across separate HTTP requests. The <code>MemorySaver</code>
+    persists each thread's state keyed by a <code>thread_id</code> (the experiment id as a string). The
+    API can inspect a thread (<code>get_state</code>), patch it (<code>update_state</code>, to apply the
+    PM's metric edits), and resume it (<code>invoke(None, config)</code>) without re-running any completed
+    node.</p>
+  </div>
+
+  <h3>The four graph helpers</h3>
+  <table>
+    <thead><tr><th>Helper</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>start_experiment(thread_id, state)</code></td><td>Run from START to the first pause (produces the hypothesis review).</td></tr>
+      <tr><td><code>resume_experiment(thread_id)</code></td><td>Resume from whichever interrupt the thread sits at (design+validate, or simulate&rarr;report).</td></tr>
+      <tr><td><code>update_experiment_state(thread_id, values)</code></td><td>Patch checkpointed state (e.g. the edited hypothesis) before resuming.</td></tr>
+      <tr><td><code>get_experiment_snapshot(thread_id)</code></td><td>Inspect a thread; <code>.next</code> is falsy when it never started or already finished &mdash; used to tell a graph-driven experiment from a manual one.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout why">
+    <span class="tag">Why the simulation and statistics nodes are deterministic</span>
+    <p><code>app/graph/pending_nodes.py</code> holds <code>simulation_node</code> and
+    <code>statistics_node</code>. Instead of waiting on wall-clock ticks, <code>simulation_node</code>
+    loops the <em>same</em> <code>run_one_tick</code> the live scheduler uses &mdash; synchronously, inside a
+    single resume &mdash; until the sample size is hit, writing real <code>Metrics</code> rows.
+    <code>statistics_node</code> then computes the snapshot and adds <code>sample_ratio</code> and
+    <code>guardrail_regression</code> so the recommendation rules can reach the rollback / stop paths.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s8">
+  <h2>8. Agents, prompts &amp; the LLM factory</h2>
+
+  <h3>The LLM factory</h3>
+  <p>
+    <code>app/agents/llm.py</code> centralizes the model client. <code>get_llm()</code> builds a
+    <code>ChatGoogleGenerativeAI</code> (Gemini) from <code>GEMINI_API_KEY</code>, with an optional
+    per-agent set of LangSmith tags/metadata. Importing the module first imports <code>app.config</code>
+    (loading <code>.env</code>) and calls <code>init_langsmith()</code>, so tracing is live before any call.
+  </p>
+  <p>
+    <code>with_retry</code> decorates every node function: it retries up to 3 times with exponential
+    backoff, and &mdash; crucially &mdash; if all attempts fail it appends the error to
+    <code>state["errors"]</code> and returns instead of raising.
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why never let one node crash the graph?</span>
+    <p>A LangGraph run touches multiple LLM calls. If a single flaky call raised, the whole pipeline would
+    abort and the PM would see a 500. By catching at the node boundary and recording the error in state,
+    the graph keeps moving and downstream code can degrade gracefully (see section 11).</p>
+  </div>
+
+  <h3>The thin-wrapper agent pattern</h3>
+  <p>Every agent node follows the same three-step shape:</p>
+  <pre><code>1. prompt = PROMPT_MD.format(&lt;fields from state&gt;, catalog=catalog_summary())
+2. result = get_llm().with_structured_output(Schema).invoke(prompt)
+3. persist via a service (only if experiment_id is present), return {state_key: result}</code></pre>
+  <p>
+    <code>with_structured_output(Schema)</code> makes Gemini emit an object that parses directly into a
+    Pydantic model &mdash; no fragile JSON string parsing &mdash; and because those schemas are
+    catalog-validated, the model is forced to emit supported ids. Persistence is gated by
+    <code>maybe_session(state)</code> (<code>app/agents/db.py</code>), which yields a DB session only when
+    <code>experiment_id</code> is set.
+  </p>
+
+  <h3>The six agents</h3>
+  <table>
+    <thead><tr><th>Agent</th><th>Reads</th><th>Produces</th><th>Deterministic partner</th></tr></thead>
+    <tbody>
+      <tr><td><code>context_agent</code></td><td>raw product context</td><td><code>ContextUnderstanding</code> (problem statement, etc.)</td><td>&mdash;</td></tr>
+      <tr><td><code>hypothesis_agent</code></td><td>context + catalog</td><td><code>Hypothesis</code> (name, statement, metrics)</td><td>catalog validation</td></tr>
+      <tr><td><code>experiment_design_agent</code></td><td>hypothesis + catalog</td><td><code>ExperimentConfiguration</code></td><td>catalog + derived split</td></tr>
+      <tr><td><code>validation_agent</code></td><td>config + hypothesis</td><td>narrated <code>ValidationResult</code></td><td>rule engine (decides)</td></tr>
+      <tr><td><code>explanation_agent</code></td><td>statistics</td><td><code>RationaleOutput</code></td><td>recommendation engine (decides category)</td></tr>
+      <tr><td><code>report_agent</code></td><td>everything</td><td><code>ReportNarrative</code> (summary, next steps)</td><td>business-impact + category computed in Python</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout why">
+    <span class="tag">The narration boundary, concretely</span>
+    <p>In <code>validation_agent</code>, the rule engine produces the decision and score; the LLM is only
+    asked to explain it, and its output <em>updates</em> the deterministic result's narration fields. In
+    <code>explanation_agent</code>, <code>decide_recommendation()</code> calls the shared recommendation
+    engine to pick scale/continue/stop/rollback, and the LLM only writes the rationale paragraph around
+    that fixed category. In <code>report_agent</code>, business impact and the recommendation string are
+    computed in Python; the LLM writes prose. The model can never change a verdict.</p>
+  </div>
+
+  <h3>Prompts as versioned Markdown</h3>
+  <p>
+    Prompts live in <code>app/prompts/*.md</code> and are templated with <code>str.format</code>. They are
+    written with real prompt-engineering discipline: a strong persona, explicit reasoning steps, hard
+    rules ("every metric MUST be a catalog id, copied verbatim"), output-format requirements matching the
+    Pydantic schema, and a worked example. Because they're plain files, they're versioned and reviewable
+    independently of code.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s9">
+  <h2>9. Deterministic decision engines</h2>
+  <p>These three engines are the trustworthy core. They are pure, unit-tested, and never call an LLM.</p>
+
+  <h3>9.1 Rule engine (<code>app/rules</code>)</h3>
+  <p>
+    A small, configurable engine evaluates JSON rule sets against a nested context using dot-path field
+    access. Each rule has a <code>when</code> condition tree (leaf operators plus <code>and</code>/
+    <code>or</code>/<code>not</code> composites), an <code>on_match</code> and <code>on_mismatch</code>
+    outcome, and a <code>priority</code>. Operators (<code>eq</code>, <code>gt</code>, <code>between</code>,
+    <code>regex</code>, <code>is_true</code>, &hellip;) live in a registry and are added via a decorator, so
+    new rule types need no engine changes.
+  </p>
+  <p>Two rule sets ship, each loaded by a cached factory:</p>
+  <ul>
+    <li><strong><code>validation_rules.json</code></strong>: 11 rules &mdash; traffic split sums to 1.0, both arms get traffic, audience present, primary metric defined (all <code>reject</code> on failure), plus <code>warn</code>-level checks (sample size &ge; 1000, snake_case flag name, guardrail present, confidence &ge; 0.90). Aggregation: any <code>reject</code> wins, else the highest-priority active decision, else <code>approve</code>.</li>
+    <li><strong><code>recommendation_rules.json</code></strong>: 5 rules &mdash; <code>rollback</code> on a significant guardrail regression (priority 100), <code>scale</code> when variant wins with &ge;95% confidence and &ge;5% lift and no regression, <code>stop</code> when control wins or the sample is exhausted without significance, else <code>continue</code>. Here the highest-priority matched rule wins.</li>
+  </ul>
+
+  <div class="callout why">
+    <span class="tag">Why JSON-driven rules instead of if/else?</span>
+    <p>Business rules change often and are the thing a non-engineer most wants to inspect or tweak.
+    Externalizing them into declarative JSON with priorities makes the policy auditable, testable in
+    isolation, and editable without touching Python &mdash; while the engine guarantees consistent
+    evaluation and a human-readable explanation for every decision.</p>
+  </div>
+
+  <h3>9.2 Statistics engine (<code>app/statistics</code>)</h3>
+  <p>
+    <code>compute_statistics(...)</code> takes cumulative per-arm counts and returns a
+    <code>StatisticsOut</code>: control/variant conversion rates, relative lift, a two-proportion z-test
+    (z-score and two-sided p-value via SciPy), confidence = 1 &minus; p, a winner
+    (control/variant/inconclusive), and a significance flag. It is intentionally pure: same inputs,
+    same output. A winner is only declared when confidence clears the threshold (default 0.95) and the
+    test is computable.
+  </p>
+
+  <h3>9.3 Simulation engine (<code>app/simulation</code>)</h3>
+  <p>
+    <code>generator.py</code> produces synthetic traffic with pure functions and a
+    <em>deterministic</em> RNG: <code>seeded_rng(experiment_id, tick_index)</code> means replaying a
+    simulation yields the exact same series. Per tick it draws new users (Poisson), conversions
+    (Binomial at the arm's rate, where variant rate = baseline &times; (1 + expected_lift)), revenue
+    (LogNormal), bounces, and per-guardrail values around each metric's catalog baseline. Setting
+    <code>guardrail_regression=True</code> biases the variant to look worse, to demo the rollback path.
+  </p>
+  <p>
+    <code>scheduler.py</code> wraps APScheduler. For each <code>RUNNING</code> experiment, every N seconds
+    <code>run_one_tick</code> loads the latest snapshot, draws the next tick, computes statistics, runs
+    the recommendation engine, inserts a new <code>Metrics</code> row, and &mdash; when the sample size is
+    reached &mdash; marks the experiment <code>COMPLETED</code> and deregisters the job. It is thread-safe,
+    idempotent per experiment (<code>max_instances=1</code>), and knows nothing about LangGraph.
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why a deterministic simulator?</span>
+    <p>This is a decision-support POC without real production traffic. A seeded simulator gives a
+    realistic, animated metrics stream for the dashboard and makes demos and tests fully reproducible.
+    The statistics engine that consumes it is unbiased, so if you fed it real numbers it would still
+    surface the correct answer &mdash; only the input source is synthetic.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s10">
+  <h2>10. Human-in-the-loop flow</h2>
+  <p>
+    This is where the API layer, services, and graph combine. Two PM decision points bracket the AI work.
+  </p>
+
+  <div class="mermaid">
+sequenceDiagram
+  actor PM
+  participant API
+  participant HS as hypothesis_service
+  participant G as LangGraph
+  participant DB as SQLite
+
+  PM->>API: POST /context
+  API->>DB: insert product_context
+  PM->>API: POST /context/{id}/hypothesis
+  API->>HS: generate_review(context_id)
+  HS->>DB: create draft experiment (placeholder)
+  HS->>G: start_experiment(thread_id, state)
+  G->>G: context_agent, hypothesis_agent
+  Note over G: PAUSE before experiment_design_agent
+  G-->>HS: paused state (hypothesis)
+  HS-->>PM: HypothesisReview (metrics pre-checked)
+
+  PM->>API: POST /experiments/{id}/validate (edited metrics)
+  API->>G: update_state(edited hypothesis)
+  API->>G: resume_experiment(thread_id)
+  G->>G: experiment_design_agent, validation_agent
+  Note over G: PAUSE before simulation_node
+  G-->>API: validation persisted
+  API-->>PM: ValidationResult (score + explanation)
+
+  PM->>API: POST /experiments/{id}/launch
+  API->>G: launch (status RUNNING) + resume_experiment
+  G->>G: simulation, statistics, explanation, report
+  G->>DB: metrics rows + report
+  API-->>PM: experiment (running/completed)
+  PM->>API: GET /experiments/{id}/metrics, POST /report
+  </div>
+
+  <h3>Step 1 &mdash; Generate the hypothesis review</h3>
+  <p>
+    <code>POST /context/{id}/hypothesis</code> calls <code>hypothesis_service.generate_review</code>. It
+    creates a placeholder draft experiment up front so the graph thread is keyed by a real
+    <code>experiment_id</code> from the first invoke, runs the graph to the first pause, then shapes the
+    paused state into a <code>HypothesisReview</code>: the AI problem statement plus, for each role, the
+    <em>full</em> catalog of eligible metrics with a <code>selected</code> flag marking the AI's picks.
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why return the whole catalog, not just the picks?</span>
+    <p>The UI renders a pre-checked checklist the PM can adjust. Returning every eligible metric with a
+    boolean means the frontend needs no catalog knowledge, and the return payload doubles as the exact
+    shape the PM sends back &mdash; a clean, symmetric contract.</p>
+  </div>
+
+  <h3>Step 2 &mdash; Apply edits and validate</h3>
+  <p>
+    <code>POST /experiments/{id}/validate</code> accepts an optional <code>HypothesisMetricUpdate</code>.
+    Its validators enforce that the lists cover exactly the catalog's eligible ids, that exactly one
+    primary is selected, and that the primary isn't also secondary. <code>apply()</code> rebuilds the
+    hypothesis through the <code>Hypothesis</code> schema (re-validating every invariant), the route
+    patches the paused thread via <code>update_state</code> and resumes it &mdash; running design then
+    validation &mdash; and returns the persisted <code>ValidationResult</code>. If no body is sent (the
+    manual path), it just runs the rule engine directly.
+  </p>
+
+  <h3>Step 3 &mdash; Launch to completion</h3>
+  <p>
+    <code>POST /experiments/{id}/launch</code> checks the snapshot. For a graph-driven experiment paused
+    before simulation, it flips status to <code>RUNNING</code> and resumes the graph all the way to END
+    (simulation &rarr; statistics &rarr; explanation &rarr; report), each node persisting via its service.
+    For a manual experiment it instead registers a live background simulation job. Afterward,
+    <code>GET /experiments/{id}/metrics</code> serves the dashboard snapshot and
+    <code>POST /experiments/{id}/report</code> persists the executive report.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s11">
+  <h2>11. Resilience &amp; error handling</h2>
+  <p>
+    The system is designed to keep producing a sensible answer even when the LLM is unavailable
+    (rate-limited, a deprecated model, or no key at all).
+  </p>
+
+  <h3>Deterministic validation score</h3>
+  <p>
+    Normally the validation agent's LLM enrichment sets <code>validation_score</code>. But
+    <code>validation_service.deterministic_score()</code> computes a launch-readiness score from the rule
+    result alone &mdash; banded to match the prompt's guidance (<code>reject</code> &lt; 0.4,
+    <code>warn</code> ~0.5&ndash;0.7, <code>approve</code> &ge; 0.85). <code>validate()</code> always fills
+    this score and derives warnings from rejected rules before persisting, so the result is never returned
+    with a null score.
+  </p>
+
+  <h3>LLM enrichment is non-fatal</h3>
+  <p>
+    In <code>validation_agent.node</code>, the deterministic rule result is computed first, then the LLM
+    call is wrapped in <code>try/except</code>. On any failure it keeps the deterministic result (score and
+    explanation intact) and records the error in <code>state["errors"]</code> instead of dropping the
+    validation.
+  </p>
+
+  <h3>The validate endpoint's fallback guard</h3>
+  <p>
+    After resuming the graph, the route checks whether <code>experiment.validation</code> is a non-empty
+    dict before trying to parse it. If the agents failed to persist a valid result (e.g. the Gemini quota
+    was exhausted), it falls back to <code>validation_service.validate()</code> &mdash; which also fills the
+    score &mdash; instead of raising a 500.
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why so much defense around the LLM?</span>
+    <p>The LLM is the least reliable dependency in the stack &mdash; quotas, model deprecations, transient
+    network errors. Because every real decision is already deterministic, the LLM being down should only
+    cost you the <em>narration</em>, never the answer or a working endpoint. Layering the fallback at the
+    service, agent, and route level means no single failure point can turn a valid experiment into an
+    error.</p>
+  </div>
+
+  <h3>Typed error hierarchy</h3>
+  <p>
+    <code>app/utils/errors.py</code> defines <code>AppError</code> subclasses each carrying an HTTP status
+    and code: <code>NotFoundError</code> (404), <code>ValidationError</code> (422),
+    <code>ConflictError</code> (409, illegal lifecycle transitions), <code>LLMError</code> (502),
+    <code>RuleEvaluationError</code> / <code>SimulationError</code> (500). The single handler in
+    <code>main.py</code> renders them all consistently.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s12">
+  <h2>12. Observability &amp; LangSmith</h2>
+  <p>
+    Because the agents run through LangChain inside LangGraph, exporting the <code>LANGCHAIN_*</code>
+    environment variables makes <em>every</em> LLM call and graph node trace to LangSmith automatically &mdash;
+    no per-call wiring. <code>init_langsmith()</code> (called on import of the LLM layer) is idempotent and
+    only turns tracing on when an API key is present, so local dev and tests don't spam failed ingestion
+    requests.
+  </p>
+  <p>
+    <code>get_run_config(run_name, thread_id, agent)</code> attaches tags and metadata (like the thread id)
+    to a run so traces are filterable per experiment and per agent. Two optional callback handlers,
+    <code>TokenMonitor</code> and <code>LatencyTracker</code>, aggregate token usage and per-call latency
+    for a local cost/latency summary.
+  </p>
+  <p>
+    Logging (<code>app/logging_config.py</code>) installs one stdout handler with a consistent format,
+    reads its level from <code>LOG_LEVEL</code>, and quiets noisy libraries (httpx, urllib3, APScheduler).
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why tracing matters here</span>
+    <p>An agent pipeline is a black box when it misbehaves &mdash; you need to see the exact prompt, the
+    structured output, token cost, and which node failed. LangSmith gives that timeline for free, and the
+    per-agent tags make it easy to answer "which agent is slow / expensive / hallucinating?".</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s13">
+  <h2>13. Evaluation harness</h2>
+  <p>
+    <code>app/evaluation/</code> is a standalone quality harness for the six agents. It runs the
+    <em>real</em> agent nodes but can swap in a deterministic fake LLM (<code>fake_llm.py</code>), so it
+    needs no API key and never calls Gemini or LangSmith in offline mode.
+  </p>
+  <p>Four deterministic evaluators score each output on a 0&ndash;1 scale:</p>
+  <ul>
+    <li><strong>schema_validity</strong> &mdash; does the output parse into the correct Pydantic schema?</li>
+    <li><strong>completeness</strong> &mdash; are required fields present and non-empty (e.g. guardrails non-empty)?</li>
+    <li><strong>correctness</strong> &mdash; rule-based consistency (traffic split sums to 1.0, score consistent with the rule decision, valid recommendation category, &hellip;).</li>
+    <li><strong>relevance</strong> &mdash; keyword/heuristic coverage against each example's expected keywords.</li>
+  </ul>
+  <p>
+    <code>run_eval.py</code> offers an offline mode (default, CI-friendly) and an online mode (real Gemini,
+    optional LLM-as-judge and LangSmith logging). Run it with
+    <code>python -m app.evaluation.run_eval</code>.
+  </p>
+
+  <div class="callout why">
+    <span class="tag">Why an offline eval harness?</span>
+    <p>It lets the team measure agent quality on every change &mdash; in CI, for free, deterministically &mdash;
+    without spending tokens or depending on network/model availability. The same real node code runs;
+    only the model is faked, so the plumbing (prompt formatting, structured output, persistence) is
+    genuinely exercised.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s14">
+  <h2>14. API reference</h2>
+  <table>
+    <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /health</code></td><td>Liveness probe.</td></tr>
+      <tr><td><code>GET /catalog</code></td><td>All catalog enums (metrics, audiences, splits, &hellip;).</td></tr>
+      <tr><td><code>POST /context</code></td><td>Persist the PM's product context; returns its id.</td></tr>
+      <tr><td><code>POST /context/{id}/hypothesis</code></td><td>Run context&rarr;hypothesis, pause, return the metric review.</td></tr>
+      <tr><td><code>POST /experiments</code></td><td>Create a draft directly (manual path); body is catalog-validated.</td></tr>
+      <tr><td><code>GET /experiments/{id}</code></td><td>Fetch the full experiment row.</td></tr>
+      <tr><td><code>POST /experiments/{id}/validate</code></td><td>Apply edited metrics + run the rule engine; returns a ValidationResult.</td></tr>
+      <tr><td><code>POST /experiments/{id}/launch</code></td><td>Flip to RUNNING and resume the graph (or start the live simulator).</td></tr>
+      <tr><td><code>POST /experiments/{id}/stop</code></td><td>Manually halt a running experiment.</td></tr>
+      <tr><td><code>GET /experiments/{id}/metrics</code></td><td>Dashboard snapshot: latest + series + statistics + recommendation.</td></tr>
+      <tr><td><code>POST /experiments/{id}/report</code></td><td>Generate and persist the executive report.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Example: create a context</h3>
+  <pre><code>curl -X POST http://localhost:8000/context \
+  -H "Content-Type: application/json" \
+  -d '{
+    "business_goal": "Increase checkout completion",
+    "website": "shop.example.com",
+    "current_flow": "cart -> shipping -> payment",
+    "feature": "checkout",
+    "pain_point": "68% of users drop off at the shipping step"
+  }'</code></pre>
+
+  <h3>Example: generate the hypothesis review</h3>
+  <pre><code>curl -X POST http://localhost:8000/context/1/hypothesis</code></pre>
+  <p>Returns a <code>HypothesisReview</code>: <code>thread_id</code>, <code>experiment_id</code>,
+  <code>experiment_name</code>, <code>hypothesis</code>, <code>problem_statement</code>, and three metric
+  lists (<code>primary_metric</code>, <code>secondary_metrics</code>, <code>guardrail_metrics</code>), each
+  an array of <code>{id, label, selected}</code>.</p>
+
+  <h3>Example: apply edited metrics and validate</h3>
+  <pre><code>curl -X POST http://localhost:8000/experiments/1/validate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "primary_metric": [
+      {"id":"checkout_conversion","selected":true},
+      {"id":"add_to_cart_rate","selected":false},
+      {"id":"signup_completion_rate","selected":false},
+      {"id":"search_click_through","selected":false},
+      {"id":"revenue_per_user","selected":false}
+    ],
+    "secondary_metrics": [
+      {"id":"add_to_cart_rate","selected":true},
+      {"id":"search_click_through","selected":false},
+      {"id":"revenue_per_user","selected":true},
+      {"id":"average_order_value","selected":false},
+      {"id":"session_duration","selected":false}
+    ]
+  }'</code></pre>
+  <div class="callout warn">
+    <span class="tag">Contract gotcha</span>
+    <p>The <code>primary_metric</code> and <code>secondary_metrics</code> lists must each cover
+    <em>exactly</em> the catalog's eligible ids for that role, with exactly one primary selected, and the
+    primary cannot also be selected as secondary. Guardrails are not part of this body &mdash; sending
+    them yields a 422.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s15">
+  <h2>15. Setup, running &amp; troubleshooting</h2>
+
+  <h3>Prerequisites</h3>
+  <ul>
+    <li>Python 3.12+ for the backend.</li>
+    <li>Node 20+ (Vite 8) for the frontend.</li>
+    <li>Optional: a Gemini API key for real LLM calls; a LangSmith key for tracing.</li>
+  </ul>
+
+  <h3>Backend</h3>
+  <pre><code>cd backend
+make install                 # create .venv + install pinned deps
+cp .env.example .env         # add GEMINI_API_KEY / LANGCHAIN_* if you have them
+make check                   # import + init_db sanity check
+make run                     # uvicorn app.main:app --reload on :8000</code></pre>
+  <p>
+    Then open <code>http://localhost:8000/docs</code> (Swagger) and <code>/health</code>. The SQLite file
+    <code>backend/experiment.db</code> is created on first startup (git-ignored). To create it explicitly:
+  </p>
+  <pre><code>python -c "from app.database import init_db; init_db(); print('created experiment.db')"
+python -c "from app.database import engine; from sqlalchemy import inspect; print(inspect(engine).get_table_names())"</code></pre>
+
+  <h3>Troubleshooting (issues actually hit during development)</h3>
+  <table>
+    <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+    <tbody>
+      <tr><td>Gemini 404 for the model / blank hypothesis</td><td>The default model isn't available to a new key. Set <code>GEMINI_MODEL=gemini-flash-latest</code> in <code>.env</code> and restart.</td></tr>
+      <tr><td><code>validation_score</code> null / validate 500</td><td>LLM enrichment failed silently. Fixed by the deterministic score + non-fatal enrichment + endpoint fallback (section 11). Restart the server so it picks up the change.</td></tr>
+      <tr><td>Frontend won't start (<code>styleText</code> / native binding)</td><td>Vite 8 needs Node 20+. Install Node 22 via nvm; do a clean <code>node_modules</code> reinstall (OneDrive can lock files).</td></tr>
+      <tr><td>Statistics / report all null</td><td>The experiment hasn't simulated yet. Launch it (graph resume or live scheduler) so metrics rows exist before requesting stats/report.</td></tr>
+      <tr><td>Endpoint ignores schema changes</td><td>Stale <code>--reload</code> process. Stop and restart uvicorn.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<section id="s16">
+  <h2>16. Appendix: file map</h2>
+  <table>
+    <thead><tr><th>Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>app/main.py</code></td><td>FastAPI entry point: lifespan, middleware, error handler, routers.</td></tr>
+      <tr><td><code>app/config.py</code></td><td>.env loader + pydantic-settings Settings.</td></tr>
+      <tr><td><code>app/logging_config.py</code></td><td>Structured logging setup.</td></tr>
+      <tr><td><code>app/api/</code></td><td>Routers: context, experiment, validation, metrics, report, catalog + shared deps.</td></tr>
+      <tr><td><code>app/services/</code></td><td>Domain services owning persistence &amp; lifecycle transitions.</td></tr>
+      <tr><td><code>app/graph/</code></td><td>LangGraph builder, shared state, deterministic simulation/statistics nodes.</td></tr>
+      <tr><td><code>app/agents/</code></td><td>Six agent nodes, the Gemini LLM factory, and the maybe_session helper.</td></tr>
+      <tr><td><code>app/prompts/</code></td><td>Versioned Markdown prompt templates (one per agent).</td></tr>
+      <tr><td><code>app/rules/</code></td><td>Configurable rule engine + operator registry + validation/recommendation JSON.</td></tr>
+      <tr><td><code>app/statistics/</code></td><td>SciPy two-proportion z-test and derived quantities.</td></tr>
+      <tr><td><code>app/simulation/</code></td><td>Deterministic synthetic generator + APScheduler tick loop.</td></tr>
+      <tr><td><code>app/models/</code></td><td>ORM models: ProductContext, Experiment, Metrics, Report.</td></tr>
+      <tr><td><code>app/schemas/</code></td><td>Pydantic request/response + agent-output schemas.</td></tr>
+      <tr><td><code>app/catalog/</code></td><td>Single source of truth: metrics, audiences, options, status.</td></tr>
+      <tr><td><code>app/evaluation/</code></td><td>Offline/online agent evaluation harness + fake LLM.</td></tr>
+      <tr><td><code>app/langsmith_config.py</code></td><td>Auto-tracing init + token/latency callbacks.</td></tr>
+      <tr><td><code>app/utils/errors.py</code></td><td>Typed AppError hierarchy with HTTP status codes.</td></tr>
+      <tr><td><code>tests/</code></td><td>pytest suite (agents, graph, prompts, API, statistics, evaluation).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+<footer>
+  Experiment Copilot backend deep dive &mdash; generated from source under <code>backend/app/</code>.
+  The "why" callouts reflect the design intent encoded in the module docstrings and code.
+</footer>
+</body>
+</html>

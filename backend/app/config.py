@@ -19,6 +19,7 @@ a populated environment.
 
 from __future__ import annotations
 
+import json
 import os
 
 # backend/.env lives one directory above this file's package (app/ -> backend/).
@@ -57,9 +58,10 @@ load_env()
 
 
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -90,23 +92,30 @@ class Settings(BaseSettings):
     # --- CORS / hosts ---
     # Accepts a JSON list (e.g. '["http://a","http://b"]'), a comma-separated
     # string ("http://a,http://b"), or "*" for wide-open (development default).
-    cors_origins: list[str] = Field(
+    # `NoDecode` stops pydantic-settings from JSON-decoding the env value before
+    # our validator runs, so a plain "*", a comma-separated list, or a JSON array
+    # are all accepted (otherwise `CORS_ORIGINS=*` raises a JSON parse error on
+    # startup — pydantic-settings treats list fields as complex/JSON by default).
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["*"], alias="CORS_ORIGINS"
     )
-    allowed_hosts: list[str] = Field(
+    allowed_hosts: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["*"], alias="ALLOWED_HOSTS"
     )
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod
     def _split_csv(cls, value):
-        """Allow comma-separated env values in addition to JSON lists."""
+        """Accept "*", a comma-separated string, or a JSON array from the env."""
         if isinstance(value, str):
             v = value.strip()
             if not v:
                 return ["*"]
             if v.startswith("["):
-                return value  # JSON list — let pydantic parse
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass
             return [item.strip() for item in v.split(",") if item.strip()]
         return value
 
