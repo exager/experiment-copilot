@@ -1,1 +1,0 @@
-"""Experiment Copilot backend application package."""
