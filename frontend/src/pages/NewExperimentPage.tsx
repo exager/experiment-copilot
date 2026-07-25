@@ -76,7 +76,6 @@ export default function NewExperimentPage() {
       const res = await validateExperiment(aiData.experiment_id, {
         primary_metric: [...metrics.primary_metric],
         secondary_metrics: [...metrics.secondary_metrics],
-        guardrail_metrics: [...metrics.guardrail_metrics],
       })
 
       setValidationData(res.data)
@@ -96,7 +95,7 @@ export default function NewExperimentPage() {
     try {
       const res = await launchExperiment(aiData.experiment_id)
       const expId = res.data.id
-      navigate(`/experiments/${expId}`)
+      navigate(`/experiments/${expId}`, { state: { launchData: res.data } })
     } catch (err: unknown) {
       setApiError(extractErrorMessage(err))
     } finally {

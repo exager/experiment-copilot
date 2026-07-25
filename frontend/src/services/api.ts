@@ -60,9 +60,8 @@ export const generateHypothesis = async (contextId: number) => {
 export const validateExperiment = async (
   experimentId: number,
   data: {
-    primary_metric: Array<{ id: string; label: string; selected: boolean }>
-    secondary_metrics: Array<{ id: string; label: string; selected: boolean }>
-    guardrail_metrics: Array<{ id: string; label: string; selected: boolean }>
+    primary_metric: Array<{ id: string; selected: boolean }>
+    secondary_metrics: Array<{ id: string; selected: boolean }>
   },
 ) => {
   if (USE_MOCK) {
@@ -90,22 +89,27 @@ export const startExperiment = async (experimentId: number) => {
   return api.post('/experiment/start', { experiment_id: experimentId })
 }
 
-// ============ GET /experiment/:id/metrics (Screen 2: Live Dashboard — poll) ============
-export const getExperimentMetrics = async (experimentId: number | string) => {
+// ============ GET /experiments/:id (Screen 2: Get experiment detail) ============
+export const getExperimentDetail = async (experimentId: number | string) => {
+  return api.get(`/experiments/${experimentId}`)
+}
+
+// ============ GET /experiments/:id/metrics (Screen 2: Live metrics with limit) ============
+export const getExperimentMetrics = async (experimentId: number | string, limit = 100) => {
   if (USE_MOCK) {
     await mockDelay(300)
     return { data: mockData.metricsResponse }
   }
-  return api.get(`/experiment/${experimentId}/metrics`)
+  return api.get(`/experiments/${experimentId}/metrics`, { params: { limit } })
 }
 
-// ============ POST /report/:id (Screen 3: Executive Report) ============
+// ============ POST /experiments/:id/report (Screen 3: Executive Report) ============
 export const generateReport = async (experimentId: number | string) => {
   if (USE_MOCK) {
     await mockDelay(1200)
     return { data: mockData.reportResponse }
   }
-  return api.post(`/report/${experimentId}`)
+  return api.post(`/experiments/${experimentId}/report`)
 }
 
 export default api
