@@ -68,10 +68,14 @@ export interface HypothesisResponse {
   readonly guardrail_metrics: readonly MetricOption[]
 }
 
+export interface ValidateMetricPayload {
+  readonly id: string
+  readonly selected: boolean
+}
+
 export interface ValidateExperimentRequest {
-  readonly primary_metric: readonly MetricOption[]
-  readonly secondary_metrics: readonly MetricOption[]
-  readonly guardrail_metrics: readonly MetricOption[]
+  readonly primary_metric: readonly ValidateMetricPayload[]
+  readonly secondary_metrics: readonly ValidateMetricPayload[]
 }
 
 export interface ExperimentResultsProps {

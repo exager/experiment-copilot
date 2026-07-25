@@ -82,3 +82,52 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* ============ PRINT STYLES ============ */
+@media print {
+  /* Hide sidebar, navigation, buttons */
+  nav, aside, .print\:hidden {
+    display: none !important;
+  }
+
+  /* Reset background */
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Full width content */
+  main, [class*="ml-"] {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Remove shadows and borders for cleaner print */
+  .shadow-sm, .shadow-md {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+  }
+
+  /* Avoid page breaks inside cards */
+  .rounded-2xl {
+    break-inside: avoid;
+  }
+
+  /* Show print-only elements */
+  .print\:block {
+    display: block !important;
+  }
+
+  /* Make grid single column for print */
+  .lg\:grid-cols-\[1\.5fr_1fr\] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Ensure colors print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

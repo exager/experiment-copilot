@@ -78,9 +78,8 @@ export default function ExperimentResults({
 
   const handleGenerateConfig = async (): Promise<void> => {
     const metricsPayload: ValidateExperimentRequest = {
-      primary_metric: [...aiData.primary_metric],
-      secondary_metrics: secondaryMetrics,
-      guardrail_metrics: guardrailMetrics,
+      primary_metric: aiData.primary_metric.map(({ id, selected }) => ({ id, selected })),
+      secondary_metrics: secondaryMetrics.map(({ id, selected }) => ({ id, selected })),
     }
     await onGenerateConfig(metricsPayload)
   }
